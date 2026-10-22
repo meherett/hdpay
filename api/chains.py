@@ -67,7 +67,7 @@ class Chain:
 
     @property
     def token_standard(self) -> str:
-        """What the chain's tokens are called, shown next to a token symbol (USDT, BEP20): the chains
+        """What the chain's tokens are called, shown next to a token symbol (USDT, BEP-20): the chains
         file's token_standard, or the family's usual name."""
         return self.standard or {Family.EVM: "ERC20", Family.TRON: "TRC20"}[self.family]
 
@@ -134,7 +134,7 @@ class _ChainEntry(BaseModel):
     confirmations: int = Field(ge=1)
     explorer: str
     rpc_url: str = ""
-    # what the chain's tokens are called (BEP20 on BNB Smart Chain); ERC20 / TRC20 by family otherwise
+    # what the chain's tokens are called (BEP-20 on BNB Smart Chain); ERC20 / TRC20 by family otherwise
     token_standard: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9-]{1,15}$")
     tokens: list[_TokenEntry] = []
 

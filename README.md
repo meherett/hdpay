@@ -43,8 +43,8 @@ chains:
 - **Add an ERC-20 or TRC-20** by adding it to a chain's `tokens`; **add a chain** of a known family with
   a new entry. No code changes, and no restart (see below).
 - **`token_standard`** names a chain's tokens where they are shown and filtered: ERC20 on EVM chains and
-  TRC20 on Tron by default, `BEP20` on BNB Smart Chain. The admin's deposit list filters by Native or by
-  standard (`GET /admin/deposits?type=BEP20`).
+  TRC20 on Tron by default, `BEP-20` on BNB Smart Chain. The admin's deposit list filters by Native or by
+  standard (`GET /admin/deposits?type=BEP-20`).
 - **Quote every `0x…` contract address.** YAML reads an unquoted one as a number; the loader refuses
   it and says so. Tron addresses (`T…`) need no quotes.
 - `chains.yaml` is git-ignored, so its `rpc_url`s can be private endpoints with access tokens. The

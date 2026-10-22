@@ -76,6 +76,9 @@ export interface UserInterface {
 /** An order: the shop sends the address to the user's email, and HDPay sets the amount from the price. */
 export interface CreateOrderInterface {
   account_id: string;
+  /** A custom buyer, for this order only (with email): not one of the shop's users. */
+  name?: string;
+  email?: string;
   product: string;
   chain: string;
   asset: string;

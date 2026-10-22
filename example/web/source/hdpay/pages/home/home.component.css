@@ -149,6 +149,17 @@
   color: rgba(0, 0, 0, 0.45);
 }
 
+/* a custom buyer: name and email side by side, the account ID under them */
+.custom-user {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 16px;
+}
+
+.custom-user nz-form-item:last-child {
+  grid-column: 1 / -1;
+}
+
 .hint {
   margin-top: 4px;
   color: rgba(0, 0, 0, 0.45);

@@ -14,7 +14,7 @@
 #   confirmations  blocks before a payment is credited
 #   explorer       block explorer base URL
 #   rpc_url        node endpoint
-#   token_standard what the chain's tokens are called (BEP20); ERC20 on evm and TRC20 on tron by default
+#   token_standard what the chain's tokens are called (BEP-20); ERC20 on evm and TRC20 on tron by default
 #   tokens         tokens accepted; decimals are checked against each contract
 #
 # Quote every 0x... contract address: YAML reads an unquoted one as a number.
@@ -46,7 +46,7 @@ chains:
 
   - key: bsc
     family: evm
-    token_standard: BEP20
+    token_standard: BEP-20
     name: BNB Smart Chain
     chain_id: 56
     native: { symbol: BNB, decimals: 18 }
@@ -60,7 +60,7 @@ chains:
 
   - key: bsc-testnet
     family: evm
-    token_standard: BEP20
+    token_standard: BEP-20
     name: BNB Smart Chain Testnet
     chain_id: 97
     native: { symbol: BNB, decimals: 18 }

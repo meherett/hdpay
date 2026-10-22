@@ -147,7 +147,7 @@ curl https://hdpay.example.com/v1/chains -H "Authorization: Bearer hdp_sk_..."
 ```
 
 - `contract` and `standard` are `null` for the chain's own coin.
-- `standard` is ERC20 on Ethereum, BEP20 on BNB Smart Chain, TRC20 on Tron.
+- `standard` is ERC20 on Ethereum, BEP-20 on BNB Smart Chain, TRC20 on Tron.
 - `usd: true` marks a USD stablecoin (USDT, USDC): the only assets a **priced** product can be paid in.
 
 Chain keys: `ethereum`, `sepolia`, `bsc`, `bsc-testnet`, `tron`, `tron-nile`.

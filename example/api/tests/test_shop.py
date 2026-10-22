@@ -224,3 +224,23 @@ def test_the_payment_page_gets_the_discount(client, fake):
     client.post("/orders", json=ORDER)
     fake.deposits["dep-1"]["discount"] = DISCOUNT | {"status": "active"}
     assert client.get("/orders/dep-1").json()["discount"]["percent"] == 20
+
+
+def test_a_custom_buyer_orders_without_becoming_a_user(client, fake):
+    users_before = len(shop(client).store.users())
+    body = ORDER | {"account_id": "7007", "name": "Grace Hopper", "email": "grace@example.com"}
+    reply = client.post("/orders", json=body)
+    assert reply.status_code == 200, reply.text
+    assert fake.opened[-1]["account_id"] == "7007"
+    order = shop(client).store.order(reply.json()["id"])
+    assert (order["account_id"], order["email"]) == ("7007", "grace@example.com")
+    assert shop(client).mailer.outbox[-1]["To"] == "grace@example.com"   # the address goes to them
+    assert len(shop(client).store.users()) == users_before   # not stored as a user
+
+    for change, problem in (
+        ({"email": None}, "both a name and an email"),
+        ({"email": "not-an-email"}, "email like"),
+        ({"account_id": "12a"}, "whole number"),
+    ):
+        reply = client.post("/orders", json=body | change)
+        assert reply.status_code == 422 and problem in reply.text

@@ -49,8 +49,8 @@ def test_list_filters_and_search(client, admin, mongo, project):
     assert ids(client, admin, chain="bsc") == {bsc["id"]}
     assert ids(client, admin, type="native") == {trx["id"]}
     assert ids(client, admin, type="token", project_id=project["_id"]) == {tron["id"], bsc["id"]}
-    # a token standard names one chain's tokens: BEP20 on BNB Smart Chain, TRC20 on Tron
-    assert ids(client, admin, type="BEP20", project_id=project["_id"]) == {bsc["id"]}
+    # a token standard names one chain's tokens: BEP-20 on BNB Smart Chain, TRC20 on Tron
+    assert ids(client, admin, type="BEP-20", project_id=project["_id"]) == {bsc["id"]}
     assert ids(client, admin, type="TRC20", project_id=project["_id"]) == {tron["id"]}
     assert ids(client, admin, type="ERC20", project_id=project["_id"]) == set()
     assert ids(client, admin, asset="USDC") == {bsc["id"]}

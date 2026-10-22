@@ -214,7 +214,7 @@ def test_a_chain_names_its_token_standard(tmp_path):
 
     chains = load_chains()
     assert (chains["ethereum"].token_standard, chains["bsc"].token_standard, chains["tron"].token_standard) == (
-        "ERC20", "BEP20", "TRC20",
+        "ERC20", "BEP-20", "TRC20",
     )
     bad = tmp_path / "chains.yaml"
     bad.write_text("""chains:

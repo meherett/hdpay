@@ -4,7 +4,8 @@ The example shop's API, for its web page. It holds the HDPay secret key; the pag
     GET  /users                  the shop's users, to pick who is buying (a sample: a real shop signs them in)
     GET  /products               what can be bought: HDPay's project products that have a price
     GET  /chains                 networks and assets accepted
-    POST /orders                 {account_id, product, chain, asset, discount_percent?, discount_ends_at?}:
+    POST /orders                 {account_id, product, chain, asset, name?, email?, discount_percent?, discount_ends_at?}:
+                                 account_id is one of the shop's users, or, with name and email, a custom buyer
                                  a payment address, at the product's price less the discount
     GET  /orders/{id}            the order's payment, for the payment page
     POST /orders/{id}/renew      a fresh address after the old one expired
@@ -19,6 +20,7 @@ import asyncio
 import contextlib
 import hashlib
 import logging
+import re
 import secrets
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -41,6 +43,7 @@ from .users import verify_password
 log = logging.getLogger("example")
 
 SESSION_DAYS = 7
+EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
 class Login(BaseModel):
@@ -63,7 +66,10 @@ class Order(BaseModel):
     # an unknown field is refused, so a page and an API out of step fail loudly instead of dropping it
     model_config = ConfigDict(extra="forbid")
 
-    account_id: str = Field(max_length=10)   # one of the shop's users
+    account_id: str = Field(max_length=10)   # one of the shop's users, or a custom buyer's
+    # a custom buyer, for this order only: not one of the shop's users, and not stored as one
+    name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=254)
     product: str = Field(max_length=120)
     chain: str = Field(max_length=60)
     asset: str = Field(max_length=20)
@@ -76,6 +82,22 @@ class Order(BaseModel):
         if (self.discount_percent is None) != (self.discount_ends_at is None):
             raise ValueError("A discount needs both a percent and an end")
         return self
+
+    @model_validator(mode="after")
+    def _custom_buyer(self) -> "Order":
+        self.name = (self.name or "").strip() or None
+        self.email = (self.email or "").strip() or None
+        if (self.name is None) != (self.email is None):
+            raise ValueError("A custom buyer needs both a name and an email")
+        if self.email is not None and not EMAIL.fullmatch(self.email):
+            raise ValueError("Enter an email like name@example.com")
+        if not self.account_id.isdigit():
+            raise ValueError("The account ID must be a whole number")
+        return self
+
+    def buyer(self) -> dict[str, str] | None:
+        """The custom buyer, or None for one of the shop's users."""
+        return {"account_id": self.account_id, "name": self.name, "email": self.email} if self.email else None
 
 
 def create_app(settings: Settings | None = None, hdpay: HDPay | None = None, follow_events: bool = True) -> FastAPI:
@@ -157,7 +179,7 @@ def create_app(settings: Settings | None = None, hdpay: HDPay | None = None, fol
         discount = None
         if order.discount_percent:
             discount = {"percent": order.discount_percent, "ends_at": order.discount_ends_at.isoformat()}
-        user, deposit, new = shop.buy(order.account_id, order.product, order.chain, order.asset, discount)
+        user, deposit, new = shop.buy(order.account_id, order.product, order.chain, order.asset, discount, order.buyer())
         if new:
             background.add_task(shop.send_address, user["email"], deposit)
         return public(deposit)

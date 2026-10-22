@@ -42,12 +42,19 @@ class Shop:
         return [p for p in self.hdpay.products() if p.get("price")]
 
     def buy(
-        self, account_id: str, product: str, chain: str, asset: str, discount: dict[str, Any] | None = None
+        self,
+        account_id: str,
+        product: str,
+        chain: str,
+        asset: str,
+        discount: dict[str, Any] | None = None,
+        buyer: dict[str, str] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any], bool]:
         """The user's address for the product, at its price; HDPay sets the amount. A discount
         ({percent, ends_at}) is this customer's: HDPay keeps it with the address, and once it ends
-        anything still owed is owed at the full price."""
-        user = self.store.user(account_id)
+        anything still owed is owed at the full price. A custom `buyer` ({account_id, name, email}) is
+        used as given, for this order only; only the order keeps their email, for its emails."""
+        user = buyer or self.store.user(account_id)
         if user is None:
             raise HDPayError(404, "No such user")
         if not any(p["value"] == product for p in self.products()):

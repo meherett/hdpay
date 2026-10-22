@@ -85,10 +85,10 @@ export class DepositComponent {
   protected search = '';
   protected projectFilter: string | null = null;
   protected readonly chain = signal<string | null>(null);
-  /** native, or a token standard (ERC20, BEP20, TRC20). */
+  /** native, or a token standard (ERC20, BEP-20, TRC20). */
   protected readonly type = signal<string | null>(null);
 
-  /** The token standards of every chain, for the type filter: ERC20, BEP20, TRC20... */
+  /** The token standards of every chain, for the type filter: ERC20, BEP-20, TRC20... */
   protected readonly standards = computed(() =>
     [...new Set(this.chains().flatMap((c) => c.assets.map((a) => a.standard)).filter((s): s is string => !!s))].sort()
   );

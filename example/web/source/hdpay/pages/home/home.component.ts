@@ -84,6 +84,14 @@ export class HomeComponent {
 
   protected readonly year = new Date().getFullYear();
   protected readonly users = signal<UserInterface[]>([]);
+  /** The "Custom user" entry in the list: a buyer typed in, for this order only. */
+  protected readonly CUSTOM = 'custom';
+  protected readonly customForm: FormGroup = this.formBuilder.group({
+    name: [null, [Validators.required, Validators.maxLength(120)]],
+    email: [null, [Validators.required, Validators.email, Validators.maxLength(254)]],
+    account_id: [null, [Validators.required, Validators.pattern(/^\d{1,10}$/)]]
+  });
+  private readonly customValue = toSignal(this.customForm.valueChanges, { initialValue: this.customForm.value });
   protected readonly chains = signal<ChainInterface[]>([]);
   protected readonly products = signal<ProductInterface[]>([]);
   protected readonly loading = signal(false);
@@ -111,8 +119,15 @@ export class HomeComponent {
   private readonly chainValue = toSignal(this.formGroup.controls['chain'].valueChanges, { initialValue: null });
   private readonly assetValue = toSignal(this.formGroup.controls['asset'].valueChanges, { initialValue: null });
 
-  /** The chosen user. */
-  protected readonly user = computed(() => this.users().find((u) => u.account_id === this.accountValue()) ?? null);
+  protected readonly custom = computed(() => this.accountValue() === this.CUSTOM);
+  /** The chosen user, or the custom buyer once their fields are filled in. */
+  protected readonly user = computed<UserInterface | null>(() => {
+    if (!this.custom()) {
+      return this.users().find((u) => u.account_id === this.accountValue()) ?? null;
+    }
+    const { name, email, account_id } = this.customValue();
+    return this.customForm.valid ? { name: name.trim(), email: email.trim(), account_id: account_id.trim() } : null;
+  });
   /** The chosen product, while it is still for sale. */
   protected readonly product = computed(() => this.products().find((p) => p.value === this.productValue()) ?? null);
   /** Every USD stablecoin on every network the project accepts: products are paid in one. */
@@ -254,13 +269,19 @@ export class HomeComponent {
     if (this.formGroup.invalid || this.loading() || this.discountLeft()?.ended) {
       return;
     }
-    const { account_id, product, chain, asset, discount_percent, discount_ends_at } = this.formGroup.value;
+    const { product, chain, asset, discount_percent, discount_ends_at } = this.formGroup.value;
+    const buyer = this.user();
+    if (!buyer) {
+      return;
+    }
+    // a custom buyer goes with the order; one of the shop's users is named by the account ID alone
+    const who = this.custom() ? { account_id: buyer.account_id, name: buyer.name, email: buyer.email } : { account_id: buyer.account_id };
     const discount = discount_percent
       ? { discount_percent: Number(discount_percent), discount_ends_at: new Date(discount_ends_at).toISOString() }
       : {};
     this.error.set(null);
     this.loading.set(true);
-    this.depositService.open({ account_id, product, chain, asset, ...discount }).subscribe({
+    this.depositService.open({ ...who, product, chain, asset, ...discount }).subscribe({
       next: (deposit) => {
         this.loading.set(false);
         void this.router.navigate(['/pay', deposit.id]);

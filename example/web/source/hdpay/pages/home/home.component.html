@@ -37,12 +37,43 @@
                       </div>
                     </nz-option>
                   }
+                  <nz-option nzCustomContent [nzValue]="CUSTOM" nzLabel="Custom user">
+                    <div class="user-option">
+                      <span>Custom user</span>
+                      <span class="user-option-note">Type a name, email and account ID, for this order only</span>
+                    </div>
+                  </nz-option>
                 </nz-select>
               </nz-form-control>
               @if (!users().length && !error()) {
-                <div class="hint">No users yet: run <code>python -m source.users seed</code> in example/api.</div>
+                <div class="hint">No users yet: run <code>python -m source.users seed</code> in example/api, or choose Custom user.</div>
               }
             </nz-form-item>
+
+            @if (custom()) {
+              <div class="custom-user" [formGroup]="customForm">
+                <nz-form-item>
+                  <nz-form-label nzFor="custom_name" nzRequired>Name</nz-form-label>
+                  <nz-form-control nzErrorTip="Enter the buyer's name">
+                    <input nz-input id="custom_name" formControlName="name" autocomplete="off" placeholder="Grace Hopper" />
+                  </nz-form-control>
+                </nz-form-item>
+                <nz-form-item>
+                  <nz-form-label nzFor="custom_email" nzRequired>Email</nz-form-label>
+                  <nz-form-control nzErrorTip="An email like name@example.com">
+                    <input nz-input id="custom_email" type="email" formControlName="email" autocomplete="off"
+                           placeholder="grace@example.com" />
+                  </nz-form-control>
+                </nz-form-item>
+                <nz-form-item>
+                  <nz-form-label nzFor="custom_account" nzRequired>Account ID</nz-form-label>
+                  <nz-form-control nzErrorTip="A whole number, up to 10 digits">
+                    <input nz-input id="custom_account" formControlName="account_id" inputmode="numeric" autocomplete="off"
+                           placeholder="1006" />
+                  </nz-form-control>
+                </nz-form-item>
+              </div>
+            }
           }
 
           @case (1) {

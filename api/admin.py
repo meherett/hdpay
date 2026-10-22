@@ -540,7 +540,7 @@ def list_deposits(
     asset_type: Annotated[
         str | None,
         Query(alias="type", pattern=r"^(native|token|[A-Z][A-Z0-9-]{1,15})$",
-              description="native, a token standard (ERC20, BEP20, TRC20), or token for any"),
+              description="native, a token standard (ERC20, BEP-20, TRC20), or token for any"),
     ] = None,
     asset: str | None = None,
     status: Status | None = None,

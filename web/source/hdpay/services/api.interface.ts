@@ -96,7 +96,7 @@ export interface DepositFilterInterface {
   search?: string;
   project_id?: string | null;
   chain?: string | null;
-  /** native coins, or the tokens of one standard (ERC20, BEP20, TRC20) */
+  /** native coins, or the tokens of one standard (ERC20, BEP-20, TRC20) */
   type?: string | null;
   asset?: string | null;
   status?: InternalStatus | null;
