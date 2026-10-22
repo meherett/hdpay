@@ -9,7 +9,7 @@
 #   docker run --env-file envs/common.env -e HDPAY_CHAIN=sepolia hdpay-watcher
 #   docker run --env-file envs/common.env --env-file envs/sweeper.env -e HDPAY_CHAIN=sepolia hdpay-sweeper
 #
-# Mount chains.yaml at /app/chains.yaml (with HDPAY_CHAINS_FILE=/app/chains.yaml); without it the
+# Mount chains.yaml at /hdpay/chains.yaml (with HDPAY_CHAINS_FILE=/hdpay/chains.yaml); without it the
 # images use chains.example.yaml.
 
 # ---- build: wheels for every dependency. coincurve may have no ready wheel for this Python and
@@ -31,7 +31,7 @@ LABEL org.opencontainers.image.source="https://github.com/meherett/hdpay"
 ENV PYTHONDONTWRITEBYTECODE=1     PYTHONUNBUFFERED=1     HDPAY_RELOAD=false
 COPY --from=build /wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels  && useradd --create-home --uid 10001 hdpay
-WORKDIR /app
+WORKDIR /hdpay
 COPY api ./api
 COPY watcher ./watcher
 COPY sweeper ./sweeper

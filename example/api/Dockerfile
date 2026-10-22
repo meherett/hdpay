@@ -14,7 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8400 \
     RELOAD=false \
     DATABASE=/data/example.db
-WORKDIR /app
+WORKDIR /hdpay
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
  && useradd --create-home --uid 10001 shop \

@@ -37,9 +37,9 @@ x-service: &service
   env_file: ../envs/common.env
   environment:
     HDPAY_RELOAD: "false"
-    HDPAY_CHAINS_FILE: /app/chains.yaml
+    HDPAY_CHAINS_FILE: /hdpay/chains.yaml
   volumes:
-    - ../chains.yaml:/app/chains.yaml:ro
+    - ../chains.yaml:/hdpay/chains.yaml:ro
   logging:
     driver: json-file
     options:
@@ -69,7 +69,7 @@ services:
       - "127.0.0.1:8090:8090"   # only nginx on the VM reaches it (nginx/sites-available)
     environment:
       HDPAY_RELOAD: "false"
-      HDPAY_CHAINS_FILE: /app/chains.yaml
+      HDPAY_CHAINS_FILE: /hdpay/chains.yaml
       HDPAY_PORT: "8090"
       # who may pass on the caller's IP: the web app's nginx (below), and nginx on the VM, which reaches
       # the published port through the network's gateway. Safe because the ports listen on 127.0.0.1 only.
