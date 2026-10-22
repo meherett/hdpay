@@ -1,0 +1,10 @@
+[project]
+name = "hdpay-example-api"
+version = "0.1.0"
+description = "A sample shop backend on HDPay: opens deposits with the project's secret key and emails the customer."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]

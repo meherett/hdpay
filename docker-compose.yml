@@ -1,0 +1,154 @@
+# HDPay: the api, the web app (the admin), one watcher and one sweeper per chain, and (optionally) MongoDB and the
+# example shop.
+#
+#   docker compose up -d --build                 api, web, watchers, sweepers (MongoDB from envs/common.env, e.g. Atlas)
+#   docker compose --profile mongo up -d         also run MongoDB here; set HDPAY_MONGODB_URI=mongodb://mongo:27017
+#   docker compose --profile example up -d       also the example shop: its API (8400) and checkout (4400)
+#   docker compose logs -f watcher-tron-nile
+#
+# The web app is at http://localhost:4500 and reaches the api through its own /api/, so it needs no CORS.
+# The example shop's settings are in envs/example.env (HDPAY_SECRET_KEY, SMTP_...); its users are
+# seeded with: docker compose run --rm example-api python -m source.users seed
+#
+# One-off tools, in a throwaway container:
+#   docker compose run --rm api python -m api.manage create-admin --email you@example.com --name "Your Name"
+#   docker compose run --rm sweeper-tron-nile python -m api.keys project <number>
+#
+# Settings come from envs/: common.env (every service) and sweeper.env (the master key: the sweepers
+# only, never the api).
+# chains.yaml is mounted read-only, so edits apply without a rebuild or restart.
+#
+# To accept another chain, copy a watcher and a sweeper below and change the chain key.
+
+name: hdpay
+
+x-service: &service
+  build: .
+  image: hdpay:latest
+  restart: unless-stopped
+  env_file: envs/common.env
+  environment:
+    HDPAY_RELOAD: "false"
+    HDPAY_CHAINS_FILE: /app/chains.yaml
+  volumes:
+    - ./chains.yaml:/app/chains.yaml:ro
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+x-sweeper: &sweeper
+  <<: *service
+  env_file:
+    - envs/common.env
+    - path: envs/sweeper.env
+      required: false   # without it the sweeper stops at once, saying HDPAY_MASTER_XPRV is missing
+
+services:
+  api:
+    <<: *service
+    command: ["python", "-m", "api"]
+    ports:
+      - "8090:8090"
+    environment:
+      HDPAY_RELOAD: "false"
+      HDPAY_CHAINS_FILE: /app/chains.yaml
+      HDPAY_PORT: "8090"
+      # the web app's nginx (below): the only caller trusted to pass on the browser's IP
+      HDPAY_FORWARDED_ALLOW_IPS: 172.28.0.10
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  web:
+    build: ./web
+    image: hdpay-web:latest
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "4500:80"
+    environment:
+      HDPAY_API_URL: http://api:8090
+    networks:
+      default:
+        ipv4_address: 172.28.0.10   # trusted by the api for X-Forwarded-For
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  watcher-sepolia:
+    <<: *service
+    command: ["python", "-m", "watcher", "--chain", "sepolia"]
+
+  watcher-tron-nile:
+    <<: *service
+    command: ["python", "-m", "watcher", "--chain", "tron-nile"]
+
+  sweeper-sepolia:
+    <<: *sweeper
+    command: ["python", "-m", "sweeper", "--chain", "sepolia"]
+
+  sweeper-tron-nile:
+    <<: *sweeper
+    command: ["python", "-m", "sweeper", "--chain", "tron-nile"]
+
+  # The example shop, off by default: --profile example.
+  example-api:
+    build: ./example/api
+    image: hdpay-example-api:latest
+    profiles: ["example"]
+    restart: unless-stopped
+    depends_on:
+      - api
+    env_file:
+      - path: envs/example.env
+        required: false   # without HDPAY_SECRET_KEY the shop starts but takes no orders
+    environment:
+      HDPAY_URL: http://api:8090
+      WEB_URL: http://localhost:4400
+    ports:
+      - "8400:8400"
+    volumes:
+      - example-data:/data
+
+  example-web:
+    build: ./example/web
+    image: hdpay-example-web:latest
+    profiles: ["example"]
+    restart: unless-stopped
+    depends_on:
+      - example-api
+    ports:
+      - "4400:80"
+    environment:
+      EXAMPLE_API_URL: http://example-api:8400
+
+  # Off by default: Atlas is used for now. Start it with --profile mongo.
+  mongo:
+    image: mongo:8
+    profiles: ["mongo"]
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  mongo-data:
+  example-data:

@@ -1,0 +1,20 @@
+.was {
+  margin-left: 8px;
+  font-size: 18px;
+  font-weight: normal;
+  color: var(--hd-muted);
+}
+
+
+code {
+  word-break: break-all;
+}
+
+.review-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.hidden {
+  display: none;
+}

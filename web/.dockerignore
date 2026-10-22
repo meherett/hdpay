@@ -1,0 +1,7 @@
+# Only what the build needs: the sources and the lock file. Dependencies are installed fresh.
+node_modules
+dist
+.angular
+.vscode
+.idea
+**/*.spec.ts

@@ -1,0 +1,56 @@
+<nz-layout class="shell">
+  <nz-header class="header">
+    <a routerLink="/dashboard" class="brand">HDPay <small>admin</small></a>
+
+    <ul nz-menu nzMode="horizontal" class="nav">
+      <li nz-menu-item routerLink="/dashboard" routerLinkActive="ant-menu-item-selected"
+          [routerLinkActiveOptions]="{ exact: true }" title="Overview">
+        <nz-icon nzType="dashboard" />
+        <span class="label">Overview</span>
+      </li>
+      <li nz-menu-item routerLink="/dashboard/project" routerLinkActive="ant-menu-item-selected" title="Projects">
+        <nz-icon nzType="appstore" />
+        <span class="label">Projects</span>
+      </li>
+      <li nz-menu-item routerLink="/dashboard/deposit" routerLinkActive="ant-menu-item-selected" title="Deposits">
+        <nz-icon nzType="transaction" />
+        <span class="label">Deposits</span>
+      </li>
+      <li nz-menu-item routerLink="/dashboard/watcher" routerLinkActive="ant-menu-item-selected" title="Watchers">
+        <nz-icon nzType="eye" />
+        <span class="label">Watchers</span>
+      </li>
+      @if (auth.isOwner()) {
+        <li nz-menu-item routerLink="/dashboard/sweeper" routerLinkActive="ant-menu-item-selected" title="Sweeper">
+          <nz-icon nzType="swap" />
+          <span class="label">Sweeper</span>
+        </li>
+        <li nz-menu-item routerLink="/dashboard/user" routerLinkActive="ant-menu-item-selected" title="Users">
+          <nz-icon nzType="team" />
+          <span class="label">Users</span>
+        </li>
+      }
+    </ul>
+
+    <div class="account">
+      <button nz-button nzType="text" class="theme-toggle" (click)="theme.toggle()"
+              [attr.aria-label]="theme.theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+              [title]="theme.theme() === 'dark' ? 'Light theme' : 'Dark theme'">
+        <nz-icon [nzType]="theme.theme() === 'dark' ? 'sun' : 'moon'" />
+      </button>
+      @if (auth.user(); as user) {
+        <a class="name" routerLink="/dashboard/password" title="Change your password">
+          {{ user.name }} <span class="role">{{ user.role }}</span>
+        </a>
+      }
+      <button nz-button nzType="text" (click)="logout()" aria-label="Sign out">
+        <nz-icon nzType="logout" />
+        <span class="sign-out">Sign out</span>
+      </button>
+    </div>
+  </nz-header>
+
+  <nz-content class="content">
+    <router-outlet />
+  </nz-content>
+</nz-layout>

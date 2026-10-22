@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HDPay Admin</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body>
+  <script>
+    // Apply the saved theme before Angular starts, so a dark admin never flashes white.
+    // In <body>, after Angular's styles.css in <head>, so dark.css wins over the light theme.
+    (function () {
+      var theme;
+      try { theme = localStorage.getItem('theme'); } catch (e) {}
+      if (theme !== 'dark' && theme !== 'light') {
+        theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', theme);
+      if (theme === 'dark') {
+        // written by the parser, so the browser waits for it before the first paint
+        document.write('<link id="dark-theme" rel="stylesheet" href="dark.css">');
+        // the production build inlines a white page background; cover it until the styles arrive
+        document.write('<style id="dark-theme-early">html,body{background:#000}</style>');
+      }
+    })();
+  </script>
+  <hdpay-root></hdpay-root>
+</body>
+</html>

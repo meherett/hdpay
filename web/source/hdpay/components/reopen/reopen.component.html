@@ -1,0 +1,120 @@
+<nz-modal
+  [nzVisible]="!!deposit()"
+  nzTitle="Reopen deposit"
+  nzOkText="Reopen"
+  [nzOkLoading]="saving()"
+  (nzOnOk)="submit()"
+  (nzOnCancel)="closed.emit()">
+  <ng-container *nzModalContent>
+    @if (deposit(); as d) {
+      @if (error(); as message) {
+        <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+      }
+
+      @if (endedDiscount(d) && d.discount; as discount) {
+        <nz-alert
+          class="block"
+          nzType="warning"
+          nzShowIcon
+          nzMessage="The discount ended before this was paid"
+          [nzDescription]="discountNote" />
+        <ng-template #discountNote>
+          {{ discount.percent }}% off ended {{ discount.ends_at | date: 'MMM d, y h:mm a' }}. The full price,
+          {{ formatUnits(discount.full_amount, d.decimals) }} {{ d.asset }}, is due instead of
+          {{ formatUnits(discount.amount, d.decimals) }}; the remaining amount below is worked out from it.
+        </ng-template>
+      }
+
+      <form nz-form [formGroup]="form" nzLayout="vertical">
+        @if (products().length) {
+          <nz-form-item>
+            <nz-form-label nzFor="reopen_product">Product</nz-form-label>
+            <nz-form-control nzErrorTip="Choose a product">
+              <nz-select nzId="reopen_product" formControlName="product" nzPlaceHolder="Product" nzShowSearch>
+                @for (p of products(); track p.value) {
+                  <nz-option nzCustomContent [nzValue]="p.value" [nzLabel]="p.name">
+                    {{ p.name }}
+                    @if (p.subname) {
+                      <span class="product-subname">{{ p.subname }}</span>
+                    }
+                  </nz-option>
+                }
+              </nz-select>
+            </nz-form-control>
+          </nz-form-item>
+        }
+
+        <nz-form-item>
+          <div class="label-row">
+            <label for="reopen_remaining">Remaining</label>
+            @if (newTotal(d); as total) {
+              <span class="hint">Total <strong>{{ total }} {{ d.asset }}</strong></span>
+            }
+          </div>
+          <nz-form-control [nzErrorTip]="remainingError">
+            <nz-input-wrapper>
+              <input nz-input id="reopen_remaining" formControlName="remaining" inputmode="decimal" autocomplete="off" placeholder="123.456789" />
+              <span nzInputSuffix class="unit">{{ d.asset }}</span>
+            </nz-input-wrapper>
+            <ng-template #remainingError let-control>
+              @if (control.errors?.['required']) {
+                Amount is required
+              }
+              @if (control.errors?.['pattern']) {
+                Enter a number, for example 25 or 25.5
+              }
+            </ng-template>
+          </nz-form-control>
+        </nz-form-item>
+
+        @if (d.discount; as discount) {
+          <nz-form-item>
+            <label nz-checkbox formControlName="keep_discount">
+              @if (discountRunning(d)) {
+                The {{ discount.percent }}% discount still runs until {{ discount.ends_at | date: 'MMM d, y h:mm a' }}
+              } @else {
+                Keep the <nz-tag class="off" nzColor="green">{{ discount.percent }}% off</nz-tag> discount anyway
+                <span class="muted">/ goodwill</span>
+              }
+            </label>
+          </nz-form-item>
+        }
+
+        <nz-form-item>
+          <div class="label-row">
+            <label>Countdown</label>
+            @if (deadline(); as ends) {
+              <span class="hint">Ends <strong>{{ ends | date: 'MMM d, y h:mm a' }}</strong></span>
+            }
+          </div>
+          <div class="windows">
+            @for (p of presets; track p.minutes) {
+              <button nz-button type="button" [nzType]="window() === p.minutes ? 'primary' : 'default'" (click)="chooseWindow(p.minutes)">
+                {{ p.label }}
+              </button>
+            }
+            <button nz-button type="button" [nzType]="window() === 'custom' ? 'primary' : 'default'" (click)="chooseWindow('custom')">
+              Custom
+            </button>
+          </div>
+          @if (window() === 'custom') {
+            <nz-form-control class="custom" [nzErrorTip]="minutesError">
+              <nz-input-wrapper>
+                <input nz-input id="reopen_minutes" formControlName="minutes" inputmode="numeric" autocomplete="off" placeholder="90" />
+                <span nzInputSuffix class="unit">min</span>
+              </nz-input-wrapper>
+              <ng-template #minutesError let-control>
+                @if (control.errors?.['required']) {
+                  Countdown is required
+                }
+                @if (control.errors?.['pattern'] || control.errors?.['min'] || control.errors?.['max']) {
+                  Use whole minutes, from 1 to 10080 (a week)
+                }
+              </ng-template>
+            </nz-form-control>
+          }
+        </nz-form-item>
+      </form>
+    }
+  </ng-container>
+</nz-modal>

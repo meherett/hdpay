@@ -1,0 +1,72 @@
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 16px;
+}
+
+.stat {
+  height: 100%;
+}
+
+.funder-path {
+  margin-left: 6px;
+  font-size: 13px;
+}
+
+.funder-address {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.funder-address code {
+  word-break: break-all;
+}
+
+.empty-tag {
+  margin: 0 8px 0 0;
+}
+
+/* why a balance could not be read, in its cell */
+.rpc-problem {
+  color: var(--hd-danger);
+  font-size: 13px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 8px 0 12px;
+}
+
+.section-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.section-head p {
+  margin: 0;
+  max-width: 820px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+}
+
+.section-card {
+  flex: 1;
+}
+
+.head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.project-select {
+  width: 200px;
+}

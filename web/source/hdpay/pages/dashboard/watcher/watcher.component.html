@@ -1,0 +1,77 @@
+<div class="page-head">
+  <div>
+    <h1>Watchers</h1>
+  </div>
+</div>
+
+@if (error(); as message) {
+  <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+}
+
+@if (stalled() > 0) {
+  <nz-alert
+    class="block"
+    nzType="error"
+    nzShowIcon
+    [nzMessage]="stalled() + ' watcher' + (stalled() === 1 ? ' has' : 's have') + ' stalled'"
+    nzDescription="Payments on that chain are not being detected or confirmed. Check its process and logs, then start it again." />
+}
+
+@if (watchers(); as list) {
+  <div>
+    <nz-table #table [nzData]="list" [nzShowPagination]="false" [nzScroll]="{ x: '820px' }">
+      <thead>
+        <tr>
+          <th nzWidth="190px">Chain</th>
+          <th nzWidth="120px">State</th>
+          <th nzAlign="right" nzWidth="120px">Scanned to</th>
+          <th nzAlign="right" nzWidth="120px">Chain head</th>
+          <th nzAlign="right" nzWidth="100px">Behind</th>
+          <th>Last run</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (watcher of table.data; track watcher.chain) {
+          <tr>
+            <td>{{ watcher.chain_name }}<div class="muted"><code>{{ watcher.chain }}</code></div></td>
+            <td>
+              @switch (state(watcher)) {
+                @case ('running') {
+                  <nz-tag nzColor="success">running</nz-tag>
+                }
+                @case ('stalled') {
+                  <nz-tag nzColor="error">stalled</nz-tag>
+                }
+                @default {
+                  <nz-tag>not started</nz-tag>
+                }
+              }
+            </td>
+            <td nzAlign="right">{{ watcher.last_block ?? '—' }}</td>
+            <td nzAlign="right">{{ watcher.head ?? '—' }}</td>
+            <td nzAlign="right">
+              @if (lag(watcher); as blocks) {
+                {{ blocks }} block{{ blocks === 1 ? '' : 's' }}
+              } @else if (lag(watcher) === 0) {
+                0
+              } @else {
+                —
+              }
+            </td>
+            <td>
+              @if (minutesSince(watcher); as minutes) {
+                {{ minutes }} min ago
+              } @else if (minutesSince(watcher) === 0) {
+                just now
+              } @else {
+                <span class="muted">never</span>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </nz-table>
+  </div>
+} @else if (loading()) {
+  <nz-card><nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 6 }" /></nz-card>
+}

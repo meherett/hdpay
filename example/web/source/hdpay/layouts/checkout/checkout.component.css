@@ -1,0 +1,35 @@
+.checkout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #f5f7fb;
+}
+
+.checkout-header {
+  padding: 24px 32px;
+}
+
+.brand {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #1f1f1f;
+}
+
+.brand:hover {
+  color: #1677ff;
+}
+
+.checkout-body {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+}
+
+.checkout-footer {
+  padding: 16px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+}

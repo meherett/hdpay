@@ -1,0 +1,231 @@
+@if (notFound()) {
+  <nz-card class="pay-card">
+    <nz-result
+      nzStatus="404"
+      nzTitle="Payment not found"
+      nzSubTitle="There is no deposit with this id.">
+      <div nz-result-extra>
+        <a nz-button nzType="primary" routerLink="/">New address</a>
+      </div>
+    </nz-result>
+  </nz-card>
+} @else if (deposit(); as d) {
+  <nz-card class="pay-card">
+    <div class="pay-head">
+      <div>
+        <h1>{{ expected() ? expected() + ' ' + d.asset : d.asset + ' payment' }}</h1>
+        <div class="network">
+          <nz-tag nzColor="blue">{{ d.asset }}</nz-tag>
+          <span>on {{ d.chain_name }}</span>
+        </div>
+      </div>
+      @if (view() === 'pending' || view() === 'partial') {
+        <div class="timer" [class.timer-low]="secondsLeft() < 300">
+          <nz-icon nzType="clock-circle" />
+          {{ countdown() }}
+        </div>
+      }
+    </div>
+
+    <nz-steps [nzCurrent]="step()" nzSize="small" class="steps" [nzStatus]="view() === 'paid' ? 'finish' : 'process'">
+      <nz-step nzTitle="Send payment" />
+      @if (view() === 'partial') {
+        <!-- part received: waiting for the rest -->
+        <nz-step nzTitle="Partial" nzIcon="loading" />
+      } @else if (view() === 'contact_support') {
+        <nz-step nzTitle="Partial" nzIcon="clock-circle" />
+      } @else {
+        <nz-step nzTitle="Confirming" />
+      }
+      <nz-step nzTitle="Paid" />
+    </nz-steps>
+
+    @if (error(); as message) {
+      <nz-alert class="block" nzType="warning" nzShowIcon [nzMessage]="message"
+                nzDescription="Your payment is not affected. This page keeps trying." />
+    }
+
+    @if (d.discount; as discount) {
+      @if (discount.status === 'active' && (view() === 'pending' || view() === 'partial')) {
+        <nz-alert class="block" nzType="success" nzShowIcon
+                  [nzMessage]="discount.percent + '% off until ' + (discount.ends_at | date: 'MMM d, y h:mm a') + (discountLeft() ? ' (' + discountLeft()?.text + ')' : '')"
+                  [nzDescription]="'Pay ' + expected() + ' ' + d.asset + ' in full before then. After it, the full price of ' + fullPrice() + ' ' + d.asset + ' is due.'" />
+      } @else if (discount.status === 'lapsed' && view() !== 'paid') {
+        <nz-alert class="block" nzType="warning" nzShowIcon
+                  [nzMessage]="'The ' + discount.percent + '% discount ended before this was paid in full'"
+                  [nzDescription]="'The full price of ' + fullPrice() + ' ' + d.asset + ' is due now.'" />
+      }
+    }
+
+    @switch (view()) {
+      @case ('pending') {
+        <div class="send">
+          <nz-qrcode [nzValue]="d.address" [nzSize]="180" nzLevel="M" class="send-qr" />
+          <div class="send-body">
+            @if (expected(); as amount) {
+              <p class="label">Send exactly</p>
+              <div class="value">
+                <strong>{{ amount }} {{ d.asset }}</strong>
+                <button nz-button nzType="text" nzSize="small" (click)="copy(amount, 'Amount')" aria-label="Copy amount">
+                  <nz-icon nzType="copy" />
+                </button>
+              </div>
+            } @else {
+              <p class="label">Send any amount of {{ d.asset }}</p>
+            }
+
+            <p class="label">To this address</p>
+            <div class="value">
+              <code id="deposit-address">{{ d.address }}</code>
+              <button nz-button nzType="text" nzSize="small" (click)="copy(d.address, 'Address')" aria-label="Copy address">
+                <nz-icon nzType="copy" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <nz-alert
+          class="block"
+          nzType="warning"
+          nzShowIcon
+          [nzMessage]="'Send only ' + d.asset + ' on ' + d.chain_name"
+          nzDescription="Other tokens, or the same token on another network, are not credited automatically." />
+        <p class="muted">
+          This page updates by itself. Your payment counts after {{ d.confirmations }} confirmations.
+        </p>
+      }
+
+      @case ('expired') {
+        <nz-result
+          nzIcon="clock-circle"
+          nzTitle="This address has expired"
+          nzSubTitle="It is not used for new payments any more. Anything already sent to it is still watched and credited, so do not send it again.">
+          <div nz-result-extra>
+            <button nz-button nzType="primary" [nzLoading]="renewing()" (click)="renew()">
+              <nz-icon nzType="reload" />
+              Generate a new address
+            </button>
+          </div>
+        </nz-result>
+        <p class="muted center">Expired address: <code>{{ d.address }}</code></p>
+      }
+
+      @case ('partial') {
+        <nz-alert
+          class="block"
+          nzType="warning"
+          nzShowIcon
+          [nzMessage]="'We received ' + received() + ' ' + d.asset + ' of ' + expected() + ' ' + d.asset"
+          [nzDescription]="'Send the remaining ' + missing() + ' ' + d.asset + ' to this same address before the timer runs out. After that the address closes and you will need to contact support.'" />
+
+        <div class="send">
+          <nz-qrcode [nzValue]="d.address" [nzSize]="180" nzLevel="M" class="send-qr" />
+          <div class="send-body">
+            <p class="label">Send the remaining</p>
+            <div class="value">
+              <strong>{{ missing() }} {{ d.asset }}</strong>
+              <button nz-button nzType="text" nzSize="small" (click)="copy(missing() ?? '', 'Amount')" aria-label="Copy amount">
+                <nz-icon nzType="copy" />
+              </button>
+            </div>
+
+            <p class="label">To this same address</p>
+            <div class="value">
+              <code id="deposit-address">{{ d.address }}</code>
+              <button nz-button nzType="text" nzSize="small" (click)="copy(d.address, 'Address')" aria-label="Copy address">
+                <nz-icon nzType="copy" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <p class="muted">
+          Send only {{ d.asset }} on {{ d.chain_name }}. This page updates by itself.
+        </p>
+      }
+
+      @case ('confirming') {
+        <div class="confirming">
+          <nz-spin nzSimple />
+          <div>
+            <h3>Payment received: {{ received() }} {{ d.asset }}</h3>
+            <p class="muted">
+              Waiting for {{ d.confirmations }} confirmations on {{ d.chain_name }}. You can close this page;
+              the payment is already on its way.
+            </p>
+          </div>
+        </div>
+      }
+
+      @case ('paid') {
+        <nz-result
+          nzStatus="success"
+          nzTitle="Payment complete"
+          [nzSubTitle]="'Your ' + d.asset + ' payment on ' + d.chain_name + ' has been received and confirmed.'" />
+      }
+
+      @case ('contact_support') {
+        <nz-result
+          nzIcon="clock-circle"
+          nzTitle="This address has expired"
+          [nzSubTitle]="'We received ' + received() + ' ' + d.asset + (expected() ? ' of ' + expected() + ' ' + d.asset : '') + ', and the rest did not arrive in time. Do not send anything more to this address. Your funds are safe: contact our support and quote the reference below to resolve it.'" />
+      }
+    }
+
+    <div class="details">
+      <div>
+        <span class="muted">Account ID</span>
+        <code id="account-id">{{ d.account_id }}</code>
+      </div>
+      @if (d.product_name) {
+        <div>
+          <span class="muted">Product</span>
+          <span>{{ d.product_name }}</span>
+        </div>
+      }
+      @if (d.discount; as discount) {
+        <div>
+          <span class="muted">Discount</span>
+          <span class="discount">
+            <nz-tag nzColor="green">{{ discount.percent }}% off</nz-tag>
+            <s class="muted">{{ fullPrice() }} {{ d.asset }}</s>
+            @switch (discount.status) {
+              @case ('active') {
+                @if (discountLeft(); as left) {
+                  <nz-tag class="countdown" [nzColor]="left.soon ? 'orange' : 'blue'">{{ left.text }}</nz-tag>
+                }
+              }
+              @case ('lapsed') {
+                <nz-tag nzColor="red">ended: full price due</nz-tag>
+              }
+              @default {
+                <nz-tag nzColor="blue">applied</nz-tag>
+              }
+            }
+          </span>
+        </div>
+        @if (discount.status === 'active') {
+          <div>
+            <span class="muted">Discount ends</span>
+            <span>{{ discount.ends_at | date: 'medium' }}</span>
+          </div>
+        }
+      }
+      <div>
+        <span class="muted">Reference</span>
+        <code>{{ d.id }}</code>
+      </div>
+      <div>
+        <span class="muted">Date</span>
+        <span>{{ d.created_at | date: 'medium' }}</span>
+      </div>
+    </div>
+  </nz-card>
+} @else {
+  <nz-card class="pay-card">
+    @if (error(); as message) {
+      <nz-alert nzType="error" nzShowIcon [nzMessage]="message" nzDescription="Retrying every few seconds." />
+    } @else {
+      <nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 6 }" />
+    }
+  </nz-card>
+}

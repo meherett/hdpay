@@ -1,0 +1,70 @@
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+  </div>
+  <div class="head-actions">
+    <nz-select class="project-select" [(ngModel)]="projectId" (ngModelChange)="load()" nzPlaceHolder="All projects" nzAllowClear>
+      @for (p of projects(); track p.id) {
+        <nz-option [nzValue]="p.id" [nzLabel]="p.name" />
+      }
+    </nz-select>
+  </div>
+</div>
+
+@if (error(); as message) {
+  <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+}
+
+@if (stats(); as data) {
+  @if (data.projects === 0) {
+    <nz-alert class="block" nzType="info" nzShowIcon nzMessage="No projects yet"
+              nzDescription="Create a project for each app that takes payments: it sets the products, networks, treasury and API keys."
+              [nzAction]="newProject" />
+  }
+
+  <div class="status-grid block">
+    <nz-card class="stat"><nz-statistic nzTitle="All deposits" [nzValue]="data.total" /></nz-card>
+    @for (key of statuses; track key) {
+      <a [routerLink]="['/dashboard/deposit']" [queryParams]="depositsFilter(key)" [title]="status[key].hint">
+        <nz-card class="stat" nzHoverable>
+          <nz-statistic [nzTitle]="status[key].label" [nzValue]="data.by_status[key]" />
+        </nz-card>
+      </a>
+    }
+  </div>
+
+  <div class="section-head">
+    <div>
+      <h2>Credited</h2>
+      <p class="muted">What was paid, per network and asset: confirmed (waiting to be swept) and swept.</p>
+    </div>
+  </div>
+  <nz-table #totals [nzData]="data.totals" [nzShowPagination]="false" nzSize="small" class="block">
+    <thead>
+      <tr>
+        <th>Network</th>
+        <th>Asset</th>
+        <th>Status</th>
+        <th nzAlign="right">Deposits</th>
+        <th nzAlign="right">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of totals.data; track row.chain + row.asset + row.status) {
+        <tr>
+          <td>{{ row.chain_name }}</td>
+          <td><strong>{{ row.asset }}</strong></td>
+          <td><nz-tag [nzColor]="status[row.status].color">{{ status[row.status].label }}</nz-tag></td>
+          <td nzAlign="right">{{ row.count }}</td>
+          <td nzAlign="right">{{ formatUnits(row.amount, row.decimals) }}</td>
+        </tr>
+      }
+    </tbody>
+  </nz-table>
+} @else if (loading()) {
+  <nz-card><nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 6 }" /></nz-card>
+}
+
+<ng-template #newProject>
+  <a nz-button nzSize="small" nzType="primary" routerLink="/dashboard/project/new">New project</a>
+</ng-template>

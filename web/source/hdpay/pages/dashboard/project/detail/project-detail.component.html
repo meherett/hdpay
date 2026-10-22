@@ -1,0 +1,385 @@
+@if (error(); as message) {
+  <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+}
+
+@if (isNew()) {
+  <div class="page-head">
+    <div>
+      <h1>New project</h1>
+      <p>
+        Set the project up, then create it. It gets a random number that starts all of its derivation paths; its keys
+        come next, from the host that holds the master key.
+      </p>
+    </div>
+  </div>
+  <hdpay-project-form [chains]="chains()" [defaults]="defaults()" [saving]="saving()" submitLabel="Create project"
+                      [readonly]="!auth.isAdmin()" (save)="create($event)" />
+} @else if (project(); as p) {
+  <div class="page-head">
+    <div>
+      <h1>
+        {{ p.name }}
+        <nz-tag [nzColor]="projectStatus[p.status].color">{{ projectStatus[p.status].label }}</nz-tag>
+      </h1>
+      @if (p.description) {
+        <p class="about">{{ p.description }}</p>
+      }
+      @if (p.website) {
+        <a class="website" [href]="p.website" target="_blank" rel="noopener">{{ host(p.website) }}</a>
+      }
+    </div>
+    <div class="page-actions">
+      @if (auth.isAdmin()) {
+        @if (p.status === 'active') {
+          <button nz-button nz-popconfirm nzPopconfirmTitle="Disable this project? Its API keys stop working; its deposits are still watched and swept."
+                  nzPopconfirmPlacement="bottomRight" (nzOnConfirm)="setStatus('disabled')">
+            <nz-icon nzType="stop" />
+            Disable
+          </button>
+        } @else if (p.status === 'disabled') {
+          <button nz-button (click)="setStatus('active')">
+            <nz-icon nzType="check" />
+            Enable
+          </button>
+        }
+      }
+      @if (auth.isOwner()) {
+        <button nz-button nzDanger (click)="deleteOpen.set(true)">
+          <nz-icon nzType="delete" />
+          Delete project
+        </button>
+      }
+    </div>
+  </div>
+
+  <hdpay-delete-project [project]="deleteOpen() ? p : null" (closed)="deleteOpen.set(false)" (deleted)="onDeleted()" />
+
+  @if (p.status === 'awaiting_keys') {
+    <nz-alert class="block" nzType="info" nzShowIcon nzMessage="Waiting for the project's keys"
+              nzDescription="A running sweeper adds them from the master key within about 30 seconds, and the project becomes active. Until then it cannot open deposits." />
+  }
+
+  <!-- the project's keys: its addresses derive from them -->
+  <nz-card class="block keys" nzSize="small">
+    <nz-table [nzData]="families" [nzShowPagination]="false" nzSize="small">
+      <thead>
+        <tr>
+          <th nzWidth="120px">Family</th>
+          <th nzWidth="220px">Path</th>
+          <th>Key</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (family of families; track family) {
+          <tr>
+            <td>{{ familyName(family) }}</td>
+            <td><code>{{ p.key_paths[family] }}</code></td>
+            <td>
+              @if (p.xpubs[family]; as xpub) {
+                <code [title]="xpub">{{ short(xpub) }}</code>
+                <button nz-button nzType="text" nzSize="small" (click)="copy(xpub, 'Key')" nz-tooltip nzTooltipTitle="Copy"
+                        aria-label="Copy key">
+                  <nz-icon nzType="copy" />
+                </button>
+              } @else {
+                <span class="muted">not added</span>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </nz-table>
+
+    @if (auth.isOwner() && missingKeys().length) {
+      <div class="keys-manual">
+        <p class="muted">No sweeper running? Run this on its host and paste the keys it prints:</p>
+        <div class="command">
+          <code>{{ command() }}</code>
+          <button nz-button nzType="text" nzSize="small" (click)="copy(command(), 'Command')" aria-label="Copy command">
+            <nz-icon nzType="copy" />
+          </button>
+        </div>
+        @if (keysError(); as message) {
+          <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+        }
+        <form nz-form [formGroup]="keysForm" nzLayout="vertical" (ngSubmit)="saveKeys()">
+          @for (family of missingKeys(); track family) {
+            <nz-form-item>
+              <nz-form-label [nzFor]="'xpub_' + family">{{ familyName(family) }} key ({{ p.key_paths[family] }})</nz-form-label>
+              <nz-form-control>
+                <input nz-input [id]="'xpub_' + family" [formControlName]="family" autocomplete="off" spellcheck="false" placeholder="xpub..." />
+              </nz-form-control>
+            </nz-form-item>
+          }
+          <button nz-button nzType="primary" type="submit" [nzLoading]="saving()">Save keys</button>
+        </form>
+      </div>
+    }
+  </nz-card>
+
+  <nz-tabs>
+    <nz-tab nzTitle="API keys">
+      <nz-card>
+        <p>
+          The project's backend sends a key with every request: <code>Authorization: Bearer hdp_sk_...</code>. A secret key can
+          do everything, including the event stream. A publishable key only lists networks and products and opens deposits,
+          for a checkout page in a browser. Keys are shown once; HDPay keeps only a hash.
+        </p>
+        @if (!auth.isOwner()) {
+          <p class="muted"><nz-icon nzType="lock" /> Only an owner creates and revokes keys.</p>
+        }
+        @if (auth.isOwner()) {
+          <form nz-form [formGroup]="keyForm" nzLayout="inline" class="block key-form" (ngSubmit)="createKey()">
+            <nz-form-item>
+              <nz-form-control>
+                <nz-select formControlName="kind" class="kind-select">
+                  <nz-option nzValue="secret" nzLabel="Secret (hdp_sk_)" />
+                  <nz-option nzValue="publishable" nzLabel="Publishable (hdp_pk_)" />
+                </nz-select>
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item>
+              <nz-form-control nzErrorTip="Name the key, e.g. where it is used">
+                <input nz-input formControlName="name" placeholder="Name, e.g. production backend" autocomplete="off" />
+              </nz-form-control>
+            </nz-form-item>
+            <button nz-button nzType="primary" type="submit">
+              <nz-icon nzType="key" />
+              Create key
+            </button>
+          </form>
+        }
+        <nz-table #keys [nzData]="apiKeys()" [nzShowPagination]="false" nzSize="small">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Kind</th>
+              <th>Key</th>
+              <th>Created</th>
+              <th>Last used</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (key of keys.data; track key.id) {
+              <tr [class.revoked]="key.revoked_at">
+                <td>{{ key.name }}</td>
+                <td><nz-tag [nzColor]="key.kind === 'secret' ? 'red' : 'blue'">{{ key.kind }}</nz-tag></td>
+                <td><code>{{ key.prefix }}…</code></td>
+                <td class="nowrap">{{ key.created_at | date: 'MMM d, y h:mm a' }}</td>
+                <td class="nowrap">
+                  @if (key.last_used_at) {
+                    {{ key.last_used_at | date: 'MMM d, y h:mm a' }}
+                  } @else {
+                    <span class="muted">never</span>
+                  }
+                </td>
+                <td class="actions">
+                  @if (key.revoked_at) {
+                    <span class="muted">revoked {{ key.revoked_at | date: 'MMM d, y' }}</span>
+                  } @else if (auth.isOwner()) {
+                    <button nz-button nzType="text" nzDanger nz-tooltip nzTooltipTitle="Revoke" aria-label="Revoke"
+                            nz-popconfirm nzPopconfirmTitle="Revoke this key? Anything still using it stops working at once."
+                            nzOkText="Revoke" nzOkDanger (nzOnConfirm)="revoke(key)">
+                      <nz-icon nzType="stop" />
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </nz-table>
+      </nz-card>
+    </nz-tab>
+
+    <nz-tab nzTitle="Settings">
+      <hdpay-project-form [project]="p" [chains]="chains()" [defaults]="defaults()" [saving]="saving()"
+                          [readonly]="!auth.isAdmin()" [ownerFieldsLocked]="!auth.isOwner()" (save)="saveSettings($event)" />
+    </nz-tab>
+
+    <nz-tab nzTitle="Balances" (nzSelect)="openBalances()" (nzDeselect)="balancesOpen.set(false)">
+      <div class="section-head">
+        <p class="muted">
+          Read live from each chain, every 30 seconds while this tab is open. Deposits are swept into the treasury; the fee
+          funders pay the gas for token sweeps, so keep them topped up.
+        </p>
+        @if (balancesAt(); as at) {
+          <span class="updated muted">
+            @if (balancesLoading()) {
+              <nz-icon nzType="loading" />
+            }
+            Updated {{ at | date: 'h:mm:ss a' }}
+          </span>
+        }
+      </div>
+      @if (balancesError(); as message) {
+        <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+      }
+
+      @if (treasury(); as treasuries) {
+        <!-- the figures that matter at a glance -->
+        <div class="stats">
+          <div class="stat">
+            <span class="stat-label">Treasury stablecoins</span>
+            <span class="stat-value">{{ stablecoins() }} <small>USD</small></span>
+            <span class="stat-note muted">USDT and USDC, on every network</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Treasuries set</span>
+            <span class="stat-value" [class.warn]="treasuriesSet() < treasuries.length">
+              {{ treasuriesSet() }} <small>of {{ treasuries.length }}</small>
+            </span>
+            <span class="stat-note muted">
+              {{ treasuriesSet() < treasuries.length ? 'A family without one is not swept' : 'Every family is swept' }}
+            </span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Fee funders</span>
+            <span class="stat-value" [class.warn]="emptyFunders()">
+              {{ emptyFunders() ? emptyFunders() + ' empty' : 'Funded' }}
+            </span>
+            <span class="stat-note muted">{{ emptyFunders() ? 'Token sweeps wait for gas' : 'Gas for token sweeps' }}</span>
+          </div>
+        </div>
+
+        <h3 class="group-title">Treasury</h3>
+        <div class="wallets">
+          @for (t of treasuries; track t.family) {
+            <div class="wallet">
+              <div class="wallet-head">
+                <span class="family">{{ familyName(t.family) }}</span>
+                <span class="muted">Treasury</span>
+              </div>
+              @if (t.address) {
+                <div class="wallet-address">
+                  <code [title]="t.address">{{ t.address }}</code>
+                  <button nz-button nzType="text" nzSize="small" (click)="copy(t.address, 'Address')" nz-tooltip
+                          nzTooltipTitle="Copy" aria-label="Copy address">
+                    <nz-icon nzType="copy" />
+                  </button>
+                </div>
+                <ng-container *ngTemplateOutlet="balanceList; context: { rows: t.balances, symbolKey: 'asset', funder: false }" />
+              } @else {
+                <div class="wallet-empty muted">
+                  <nz-icon nzType="exclamation-circle" />
+                  No {{ familyName(t.family) }} treasury yet, so its deposits wait to be swept. Set one on the Settings tab.
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      @if (funders(); as list) {
+        <h3 class="group-title">Fee funders</h3>
+        <div class="wallets">
+          @for (f of list; track f.family) {
+            <div class="wallet">
+              <div class="wallet-head">
+                <span class="family">{{ familyName(f.family) }}</span>
+                <span class="muted">Fee funder</span>
+                <code class="path" nz-tooltip nzTooltipTitle="A new funder each UTC year">{{ f.path }}</code>
+              </div>
+              <div class="wallet-address">
+                <code [title]="f.address">{{ f.address }}</code>
+                <button nz-button nzType="text" nzSize="small" (click)="copy(f.address, 'Address')" nz-tooltip
+                        nzTooltipTitle="Copy" aria-label="Copy address">
+                  <nz-icon nzType="copy" />
+                </button>
+              </div>
+              <ng-container *ngTemplateOutlet="balanceList; context: { rows: f.balances, symbolKey: 'symbol', funder: true }" />
+            </div>
+          }
+        </div>
+      }
+
+      @if (balancesLoading() && !treasury()) {
+        <div class="wallets">
+          <div class="wallet"><nz-skeleton [nzActive]="true" /></div>
+          <div class="wallet"><nz-skeleton [nzActive]="true" /></div>
+        </div>
+      }
+    </nz-tab>
+
+    <nz-tab nzTitle="Events" (nzSelect)="loadEvents()">
+      <div class="section-head">
+        <p class="muted">The latest events sent to the project's backend, newest first. It has acknowledged up to {{ p.events_acked }}.</p>
+      </div>
+      <nz-table #eventTable [nzData]="events()" [nzShowPagination]="false" nzSize="small">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Event</th>
+            <th>Deposit</th>
+            <th>Account</th>
+            <th nzAlign="right">Received</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (event of eventTable.data; track event.id) {
+            <tr>
+              <td>{{ event.seq }}</td>
+              <td><code>{{ event.type }}</code></td>
+              <td><a [routerLink]="['/dashboard/deposit', event.deposit.id]">{{ event.deposit.asset }} on {{ event.deposit.chain_name }}</a></td>
+              <td><code>{{ event.deposit.account_id }}</code></td>
+              <td nzAlign="right">{{ formatUnits(event.deposit.received_amount, event.deposit.decimals) }}</td>
+              <td class="nowrap">{{ event.created_at | date: 'MMM d, y h:mm:ss a' }}</td>
+            </tr>
+          }
+        </tbody>
+      </nz-table>
+    </nz-tab>
+  </nz-tabs>
+} @else if (!error()) {
+  <nz-card><nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 6 }" /></nz-card>
+}
+
+<!-- a wallet's balances, a block per network -->
+<ng-template #balanceList let-rows="rows" let-symbolKey="symbolKey" let-funder="funder">
+  <div class="networks">
+    @for (group of byNetwork(rows); track group.chain) {
+      <div class="network">
+        <div class="network-head">
+          <span>{{ group.chain_name }}</span>
+          <a [href]="group.address_url" target="_blank" rel="noopener" nz-tooltip nzTooltipTitle="Open in explorer"
+             aria-label="Open in explorer">
+            <nz-icon nzType="export" />
+          </a>
+        </div>
+        @for (row of group.rows; track $index) {
+          <div class="asset-row">
+            <span class="asset">{{ row[symbolKey] }}</span>
+            @if (row.balance === null) {
+              <span class="rpc-problem">{{ row.error ?? 'Could not read' }}</span>
+            } @else {
+              <span class="amount" [class.zero]="row.balance === '0'">
+                @if (funder && row.balance === '0') {
+                  <nz-tag nzColor="orange">Top up</nz-tag>
+                }
+                {{ formatUnits(row.balance, row.decimals) }}
+              </span>
+            }
+          </div>
+        }
+      </div>
+    }
+  </div>
+</ng-template>
+
+<nz-modal [nzVisible]="!!newKey()" nzTitle="Your new API key" [nzClosable]="false" [nzMaskClosable]="false"
+          [nzCancelText]="null" nzOkText="I saved it" (nzOnOk)="newKey.set(null)">
+  <ng-container *nzModalContent>
+    @if (newKey(); as key) {
+      <nz-alert class="block" nzType="warning" nzShowIcon nzMessage="Copy it now: it is not shown again"
+                nzDescription="HDPay keeps only a hash. If it is lost, create a new key and revoke this one." />
+      <div class="command">
+        <code class="key">{{ key.key }}</code>
+        <button nz-button nzType="text" nzSize="small" (click)="copy(key.key, 'Key')" aria-label="Copy key">
+          <nz-icon nzType="copy" />
+        </button>
+      </div>
+      <p class="muted">{{ key.kind }} key "{{ key.name }}"</p>
+    }
+  </ng-container>
+</nz-modal>

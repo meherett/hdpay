@@ -1,0 +1,75 @@
+<div class="page-head">
+  <div>
+    <h1>Projects</h1>
+  </div>
+  @if (auth.isOwner()) {
+    <a nz-button nzType="primary" routerLink="/dashboard/project/new">
+      <nz-icon nzType="plus" />
+      New project
+    </a>
+  }
+</div>
+
+@if (error(); as message) {
+  <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+}
+
+<nz-table #table [nzData]="projects()" [nzLoading]="loading()" [nzShowPagination]="false">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Number</th>
+      <th>Status</th>
+      <th>Networks</th>
+      <th>Products</th>
+      <th>Created</th>
+      <th>Updated</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (project of table.data; track project.id) {
+      <tr>
+        <td><strong>{{ project.name }}</strong></td>
+        <td><code>{{ project.number }}</code></td>
+        <td>
+          @if (project.status === 'locked') {
+            <nz-tag nz-tooltip nzTooltipTitle="An owner has not given you this project">
+              <nz-icon nzType="lock" />
+              Locked
+            </nz-tag>
+          } @else {
+            <nz-tag [nzColor]="projectStatus[project.status].color">{{ projectStatus[project.status].label }}</nz-tag>
+          }
+        </td>
+        @if (project.status === 'locked') {
+          <td class="muted">&mdash;</td>
+          <td class="muted">&mdash;</td>
+          <td class="muted">&mdash;</td>
+          <td class="muted">&mdash;</td>
+        } @else {
+          <td>{{ networks(project) }}</td>
+          <td>{{ project.products.length }}</td>
+          <td class="nowrap">{{ project.created_at | date: 'MMM d, y' }}</td>
+          <td class="nowrap">{{ project.updated_at | date: 'MMM d, y h:mm a' }}</td>
+        }
+        <td class="nowrap actions">
+          @if (project.status !== 'locked') {
+            <a nz-button nzType="text" nz-tooltip nzTooltipTitle="Detail" aria-label="Detail"
+               [routerLink]="['/dashboard/project', project.id]">
+              <nz-icon nzType="eye" />
+            </a>
+          }
+          @if (auth.isOwner()) {
+            <button nz-button nzType="text" nzDanger nz-tooltip nzTooltipTitle="Delete" aria-label="Delete"
+                    (click)="deleteTarget.set(project)">
+              <nz-icon nzType="delete" />
+            </button>
+          }
+        </td>
+      </tr>
+    }
+  </tbody>
+</nz-table>
+
+<hdpay-delete-project [project]="deleteTarget()" (closed)="deleteTarget.set(null)" (deleted)="onDeleted()" />

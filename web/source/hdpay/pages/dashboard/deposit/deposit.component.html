@@ -1,0 +1,166 @@
+<div class="page-head">
+  <div>
+    <h1>Deposits</h1>
+  </div>
+</div>
+
+<div class="block">
+  <div class="filters">
+    <nz-input-wrapper class="filter-search">
+      <nz-icon nzInputPrefix nzType="search" />
+      <input
+        nz-input
+        id="search"
+        placeholder="Deposit id, account id, product, address or tx hash"
+        [(ngModel)]="search"
+        (ngModelChange)="onSearch($event)" />
+    </nz-input-wrapper>
+
+    <nz-select class="filter" [(ngModel)]="projectFilter" (ngModelChange)="onFilter()" nzPlaceHolder="Project" nzAllowClear>
+      @for (p of projects(); track p.id) {
+        <nz-option [nzValue]="p.id" [nzLabel]="p.name" />
+      }
+    </nz-select>
+
+    <nz-select class="filter" [ngModel]="chain()" (ngModelChange)="chain.set($event); onFilter()" nzPlaceHolder="Network" nzAllowClear>
+      @for (c of chains(); track c.key) {
+        <nz-option [nzValue]="c.key" [nzLabel]="c.name" />
+      }
+    </nz-select>
+
+    <nz-select class="filter" [ngModel]="type()" (ngModelChange)="type.set($event); onFilter()" nzPlaceHolder="Type" nzAllowClear>
+      <nz-option nzValue="native" nzLabel="Native" />
+      @for (standard of standards(); track standard) {
+        <nz-option [nzValue]="standard" [nzLabel]="standard" />
+      }
+    </nz-select>
+
+    <nz-select class="filter" [(ngModel)]="asset" (ngModelChange)="onFilter()" nzPlaceHolder="Asset" nzAllowClear>
+      @for (symbol of assetSymbols(); track symbol) {
+        <nz-option [nzValue]="symbol" [nzLabel]="symbol" />
+      }
+    </nz-select>
+
+    <nz-select class="filter" [(ngModel)]="statusFilter" (ngModelChange)="onFilter()" nzPlaceHolder="Status" nzAllowClear>
+      @for (key of statuses; track key) {
+        <nz-option [nzValue]="key" [nzLabel]="statusInfo[key].label" />
+      }
+    </nz-select>
+
+    <nz-select class="filter" [(ngModel)]="differenceFilter" (ngModelChange)="onFilter()" nzPlaceHolder="Difference" nzAllowClear>
+      <nz-option nzValue="over" nzLabel="Overpaid" />
+      <nz-option nzValue="under" nzLabel="Underpaid" />
+    </nz-select>
+
+    <button nz-button (click)="reset()">Clear</button>
+  </div>
+</div>
+
+<div>
+  <nz-table
+    #table
+    nzShowSizeChanger
+    [nzData]="deposits()"
+    [nzFrontPagination]="false"
+    [nzLoading]="loading()"
+    [nzTotal]="total()"
+    [nzPageIndex]="pageIndex()"
+    [nzPageSize]="pageSize()"
+    [nzPageSizeOptions]="[10, 20, 50, 100]"
+    (nzQueryParams)="onQueryParams($event)">
+    <thead>
+      <tr>
+        <th>Project</th>
+        <th>Account</th>
+        <th>Product</th>
+        <th>Network</th>
+        <th>Type</th>
+        <th>Asset</th>
+        <th>Status</th>
+        <th nzWidth="230px">Path</th>
+        <th nzAlign="right">Expected</th>
+        <th nzAlign="right">Received</th>
+        <th nzAlign="right">Difference</th>
+        <th nzWidth="190px">Date</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (deposit of table.data; track deposit.id) {
+        <tr>
+          <td><a [routerLink]="['/dashboard/project', deposit.project_id]">{{ deposit.project_name ?? deposit.project_id }}</a></td>
+          <td><code>{{ deposit.account_id }}</code></td>
+          <td>
+            @if (deposit.product_name) {
+              <span class="product" [title]="deposit.product_name">{{ deposit.product_name }}</span>
+            } @else {
+              <span class="muted">&mdash;</span>
+            }
+          </td>
+          <td>{{ deposit.chain_name }}</td>
+          <td>
+            {{ deposit.standard ?? 'Native' }}
+          </td>
+          <td><strong>{{ deposit.asset }}</strong></td>
+          <td>
+            <nz-tag [nzColor]="statusInfo[deposit.internal_status].color" nz-tooltip [nzTooltipTitle]="statusInfo[deposit.internal_status].hint">
+              {{ statusInfo[deposit.internal_status].label }}
+            </nz-tag>
+            @if (deposit.late) {
+              <nz-tag nzColor="gold">late</nz-tag>
+            }
+          </td>
+          <td><code class="address" [title]="deposit.address">{{ deposit.path }}</code></td>
+          <td nzAlign="right">
+            @if (deposit.expected_amount) {
+              {{ formatUnits(deposit.expected_amount, deposit.decimals) }}
+              @if (deposit.discount && deposit.discount.amount === deposit.expected_amount) {
+                <!-- the original price, struck through, says there is a discount; its details on hover -->
+                <div class="muted">
+                  <s nz-tooltip
+                     [nzTooltipTitle]="deposit.discount.percent + '% off until ' + (deposit.discount.ends_at | date: 'MMM d, y h:mm a') + ': ' + discountStatus[discountState(deposit) ?? deposit.discount.status].label">
+                    {{ formatUnits(deposit.discount.full_amount, deposit.decimals) }}
+                  </s>
+                </div>
+              }
+            } @else {
+              <span class="muted">any</span>
+            }
+          </td>
+          <td nzAlign="right">{{ formatUnits(deposit.received_amount, deposit.decimals) }}</td>
+          <td nzAlign="right">
+            @if (difference(deposit.received_amount, deposit.expected_amount, deposit.decimals); as diff) {
+              <span [class]="'diff diff-' + diff.kind">{{ diff.text }}</span>
+            } @else {
+              <span class="muted">&mdash;</span>
+            }
+          </td>
+          <td class="date">{{ deposit.created_at | date: 'MMM d, y h:mm a' }}</td>
+          <td class="actions">
+            @if (auth.isAdmin() && deposit.internal_status === 'needs_review' && deposit.expected_amount) {
+              <button nz-button nzType="text" class="reopen" nz-tooltip nzTooltipTitle="Reopen" aria-label="Reopen"
+                      (click)="reopenTarget.set(deposit)">
+                <nz-icon nzType="redo" />
+              </button>
+            }
+            <a nz-button nzType="text" nz-tooltip nzTooltipTitle="Detail" aria-label="Detail"
+               [routerLink]="['/dashboard/deposit', deposit.id]">
+              <nz-icon nzType="eye" />
+            </a>
+            @if (auth.isOwner()) {
+              <button nz-button nzType="text" nzDanger nz-tooltip nzTooltipTitle="Delete" aria-label="Delete"
+                      nz-popconfirm [nzPopconfirmTitle]="deleteWarning(deposit)" nzPopconfirmPlacement="left"
+                      nzOkText="Delete" nzOkDanger [nzLoading]="deletingId() === deposit.id" (nzOnConfirm)="remove(deposit)">
+                @if (deletingId() !== deposit.id) {
+                  <nz-icon nzType="delete" />
+                }
+              </button>
+            }
+          </td>
+        </tr>
+      }
+    </tbody>
+  </nz-table>
+</div>
+
+<hdpay-reopen [deposit]="reopenTarget()" (closed)="reopenTarget.set(null)" (reopened)="onReopened($event)" />

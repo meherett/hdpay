@@ -1,0 +1,46 @@
+/* a field's label on the left, what its value leads to on the right */
+.label-row {
+  flex: 0 0 100%;
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--hd-muted);
+  text-align: right;
+}
+
+.hint strong {
+  font-weight: 600;
+  color: var(--hd-text);
+}
+
+.unit {
+  color: var(--hd-muted);
+}
+
+/* the percent off, as a tag inside the checkbox label */
+.off {
+  margin: 0 2px;
+}
+
+.windows {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+/* separate buttons sharing the row evenly; the chosen one is filled */
+.windows button {
+  flex: 1;
+  padding: 0 6px;
+}
+
+.custom {
+  margin-top: 8px;
+}

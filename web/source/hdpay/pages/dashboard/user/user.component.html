@@ -1,0 +1,212 @@
+<div class="page-head">
+  <div>
+    <h1>Users</h1>
+  </div>
+  @if (auth.isAdmin()) {
+    <button nz-button nzType="primary" (click)="openCreate()">
+      <nz-icon nzType="plus" />
+      New user
+    </button>
+  }
+</div>
+
+@if (error(); as message) {
+  <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+}
+
+<nz-table #table [nzData]="users()" [nzLoading]="loading()" [nzShowPagination]="false">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Role</th>
+      <th>Projects</th>
+      <th>Status</th>
+      <th>Last sign-in</th>
+      @if (auth.isAdmin()) {
+        <th></th>
+      }
+    </tr>
+  </thead>
+  <tbody>
+    @for (user of table.data; track user.id) {
+      <tr>
+        <td>
+          {{ user.name }}
+          @if (isMe(user)) {
+            <span class="muted">(you)</span>
+          }
+        </td>
+        <td>{{ user.email }}</td>
+        <td>
+          @if (canManage(user) && !isMe(user)) {
+            <nz-select class="role-select" [ngModel]="user.role" (ngModelChange)="setRole(user, $event)">
+              @if (auth.isOwner()) {
+                <nz-option nzValue="owner" nzLabel="owner" />
+              }
+              <nz-option nzValue="admin" nzLabel="admin" />
+              <nz-option nzValue="viewer" nzLabel="viewer" />
+            </nz-select>
+          } @else {
+            <nz-tag [nzColor]="roleColor[user.role]">{{ user.role }}</nz-tag>
+          }
+        </td>
+        <td>
+          @if (user.role === 'owner') {
+            <span class="muted">All projects</span>
+          } @else if (!user.projects) {
+            <nz-tag nzColor="blue">All projects</nz-tag>
+          } @else {
+            @for (name of projectList(user); track name) {
+              <nz-tag>{{ name }}</nz-tag>
+            }
+          }
+        </td>
+        <td>
+          <nz-tag [nzColor]="user.is_active ? 'green' : 'default'">{{ user.is_active ? 'active' : 'disabled' }}</nz-tag>
+        </td>
+        <td>
+          @if (user.last_login_at) {
+            {{ user.last_login_at | date: 'MMM d, y h:mm a' }}
+          } @else {
+            <span class="muted">never</span>
+          }
+        </td>
+        @if (auth.isAdmin()) {
+          <td class="actions">
+            @if (canManage(user) && user.role !== 'owner') {
+              <button nz-button nzType="text" nz-tooltip nzTooltipTitle="Projects" aria-label="Projects"
+                      (click)="openAccess(user)">
+                <nz-icon nzType="appstore" />
+              </button>
+            }
+            @if (canManage(user)) {
+              <button nz-button nzType="text" nz-tooltip nzTooltipTitle="Set password" aria-label="Set password"
+                      (click)="openPassword(user)">
+                <nz-icon nzType="key" />
+              </button>
+            }
+            @if (canManage(user) && !isMe(user)) {
+              @if (user.is_active) {
+                <button nz-button nzType="text" nz-tooltip nzTooltipTitle="Disable" aria-label="Disable"
+                        nz-popconfirm nzPopconfirmTitle="Disable this user? They are signed out everywhere."
+                        nzOkText="Disable" (nzOnConfirm)="setActive(user, false)">
+                  <nz-icon nzType="lock" />
+                </button>
+              } @else {
+                <button nz-button nzType="text" nz-tooltip nzTooltipTitle="Enable" aria-label="Enable"
+                        (click)="setActive(user, true)">
+                  <nz-icon nzType="unlock" />
+                </button>
+              }
+              <button nz-button nzType="text" nzDanger nz-tooltip nzTooltipTitle="Delete" aria-label="Delete"
+                      nz-popconfirm nzPopconfirmTitle="Delete this user?" nzOkText="Delete" nzOkDanger
+                      (nzOnConfirm)="remove(user)">
+                <nz-icon nzType="delete" />
+              </button>
+            }
+          </td>
+        }
+      </tr>
+    }
+  </tbody>
+</nz-table>
+
+<nz-modal [nzVisible]="creating()" nzTitle="New user" nzOkText="Create user" [nzOkLoading]="saving()"
+          (nzOnOk)="create()" (nzOnCancel)="creating.set(false)">
+  <ng-container *nzModalContent>
+    @if (createError(); as message) {
+      <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+    }
+    <form nz-form [formGroup]="createForm" nzLayout="vertical">
+      <nz-form-item>
+        <nz-form-label nzFor="new_name">Name</nz-form-label>
+        <nz-form-control nzErrorTip="Name is required">
+          <input nz-input id="new_name" formControlName="name" autocomplete="off" placeholder="Ada Lovelace" />
+        </nz-form-control>
+      </nz-form-item>
+      <nz-form-item>
+        <nz-form-label nzFor="new_email">Email</nz-form-label>
+        <nz-form-control nzErrorTip="Enter a valid email address">
+          <input nz-input id="new_email" type="email" formControlName="email" autocomplete="off" placeholder="name@example.com" />
+        </nz-form-control>
+      </nz-form-item>
+      <nz-form-item>
+        <nz-form-label nzFor="new_role">Role</nz-form-label>
+        <nz-form-control>
+          <nz-select nzId="new_role" formControlName="role">
+            <nz-option nzValue="viewer" nzLabel="viewer: looks, changes nothing" />
+            <nz-option nzValue="admin" nzLabel="admin: changes things" />
+            @if (auth.isOwner()) {
+              <nz-option nzValue="owner" nzLabel="owner: also deletes, and manages owners" />
+            }
+          </nz-select>
+        </nz-form-control>
+      </nz-form-item>
+      @if (createForm.value.role !== 'owner') {
+        <nz-form-item>
+          <nz-form-label>Projects</nz-form-label>
+          <nz-radio-group formControlName="access">
+            <label nz-radio nzValue="all">All projects</label>
+            <label nz-radio nzValue="some">Specific projects</label>
+          </nz-radio-group>
+          @if (createForm.value.access === 'some') {
+            <nz-select class="project-select" formControlName="projects" nzMode="multiple" nzPlaceHolder="Choose projects">
+              @for (p of projects(); track p.id) {
+                <nz-option [nzValue]="p.id" [nzLabel]="p.name" />
+              }
+            </nz-select>
+          }
+        </nz-form-item>
+      }
+      <nz-form-item>
+        <nz-form-label nzFor="new_password">Password</nz-form-label>
+        <nz-form-control nzErrorTip="Use 8 to 72 characters" nzExtra="Give it to them privately; they can change it after signing in.">
+          <nz-input-password>
+            <input nz-input id="new_password" type="password" formControlName="password" autocomplete="new-password" />
+          </nz-input-password>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </ng-container>
+</nz-modal>
+
+<nz-modal [nzVisible]="!!passwordFor()" [nzTitle]="'Set a password for ' + (passwordFor()?.name ?? '')" nzOkText="Set password"
+          [nzOkLoading]="saving()" (nzOnOk)="savePassword()" (nzOnCancel)="passwordFor.set(null)">
+  <ng-container *nzModalContent>
+    @if (passwordError(); as message) {
+      <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+    }
+    <form nz-form [formGroup]="passwordForm" nzLayout="vertical">
+      <nz-form-item>
+        <nz-form-label nzFor="set_password">New password</nz-form-label>
+        <nz-form-control nzErrorTip="Use 8 to 72 characters" nzExtra="Their sessions end; they sign in with this one.">
+          <nz-input-password>
+            <input nz-input id="set_password" type="password" formControlName="password" autocomplete="new-password" />
+          </nz-input-password>
+        </nz-form-control>
+      </nz-form-item>
+    </form>
+  </ng-container>
+</nz-modal>
+
+<nz-modal [nzVisible]="!!accessFor()" [nzTitle]="'Projects for ' + (accessFor()?.name ?? '')" nzOkText="Save"
+          [nzOkLoading]="saving()" (nzOnOk)="saveAccess()" (nzOnCancel)="accessFor.set(null)">
+  <ng-container *nzModalContent>
+    <p class="muted">
+      What this {{ accessFor()?.role }} sees and works on: every project, including new ones, or only the ones chosen here.
+      Anything else is hidden from them.
+    </p>
+    <nz-radio-group [(ngModel)]="accessMode">
+      <label nz-radio nzValue="all">All projects</label>
+      <label nz-radio nzValue="some">Specific projects</label>
+    </nz-radio-group>
+    @if (accessMode === 'some') {
+      <nz-select class="project-select" [(ngModel)]="accessProjects" nzMode="multiple" nzPlaceHolder="Choose projects">
+        @for (p of projects(); track p.id) {
+          <nz-option [nzValue]="p.id" [nzLabel]="p.name" />
+        }
+      </nz-select>
+    }
+  </ng-container>
+</nz-modal>

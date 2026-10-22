@@ -1,0 +1,91 @@
+# Chains and tokens HDPay accepts.
+#
+# Copy this file to chains.yaml (git-ignored) and put your private RPC endpoints in it; without a
+# chains.yaml, HDPay runs on this file. Edits are picked up while everything runs, and an invalid
+# edit is logged and ignored. HDPAY_RPC_URL_<KEY> in .env overrides a chain's rpc_url
+# (dashes become underscores, e.g. HDPAY_RPC_URL_TRON_NILE).
+#
+# Per chain:
+#   key            lower-case id, stored on every deposit: never rename one that has deposits
+#   family         evm or tron
+#   name           shown in the web and admin
+#   chain_id       evm only; checked against the RPC so a wrong endpoint is caught
+#   native         the chain's coin and its decimals
+#   confirmations  blocks before a payment is credited
+#   explorer       block explorer base URL
+#   rpc_url        node endpoint
+#   token_standard what the chain's tokens are called (BEP20); ERC20 on evm and TRC20 on tron by default
+#   tokens         tokens accepted; decimals are checked against each contract
+#
+# Quote every 0x... contract address: YAML reads an unquoted one as a number.
+
+chains:
+  - key: ethereum
+    family: evm
+    name: Ethereum
+    chain_id: 1
+    native: { symbol: ETH, decimals: 18 }
+    confirmations: 12
+    explorer: https://etherscan.io
+    rpc_url: https://ethereum-rpc.publicnode.com
+    tokens:
+      - { symbol: USDT, contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 }
+      - { symbol: USDC, contract: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 }
+
+  - key: sepolia
+    family: evm
+    name: Sepolia
+    chain_id: 11155111
+    native: { symbol: ETH, decimals: 18 }
+    confirmations: 6
+    explorer: https://sepolia.etherscan.io
+    rpc_url: https://ethereum-sepolia-rpc.publicnode.com
+    tokens:
+      # Circle's official test USDC; Tether has no official Sepolia deployment
+      - { symbol: USDC, contract: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", decimals: 6 }
+
+  - key: bsc
+    family: evm
+    token_standard: BEP20
+    name: BNB Smart Chain
+    chain_id: 56
+    native: { symbol: BNB, decimals: 18 }
+    confirmations: 15
+    explorer: https://bscscan.com
+    rpc_url: https://bsc-rpc.publicnode.com
+    tokens:
+      # Binance-Peg stablecoins use 18 decimals, unlike Ethereum and Tron
+      - { symbol: USDT, contract: "0x55d398326f99059fF775485246999027B3197955", decimals: 18 }
+      - { symbol: USDC, contract: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", decimals: 18 }
+
+  - key: bsc-testnet
+    family: evm
+    token_standard: BEP20
+    name: BNB Smart Chain Testnet
+    chain_id: 97
+    native: { symbol: BNB, decimals: 18 }
+    confirmations: 15
+    explorer: https://testnet.bscscan.com
+    rpc_url: https://bsc-testnet-rpc.publicnode.com
+    tokens: []
+
+  - key: tron
+    family: tron
+    name: Tron
+    native: { symbol: TRX, decimals: 6 }
+    confirmations: 20
+    explorer: https://tronscan.org
+    rpc_url: https://api.trongrid.io
+    tokens:
+      # Circle stopped issuing USDC on Tron in 2024, so only USDT is listed
+      - { symbol: USDT, contract: TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t, decimals: 6 }
+
+  - key: tron-nile
+    family: tron
+    name: Tron Nile Testnet
+    native: { symbol: TRX, decimals: 6 }
+    confirmations: 20
+    explorer: https://nile.tronscan.org
+    rpc_url: https://nile.trongrid.io
+    tokens:
+      - { symbol: USDT, contract: TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf, decimals: 6 }

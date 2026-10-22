@@ -1,0 +1,211 @@
+<div class="page-head">
+  <div>
+    <h1>Sweeper</h1>
+  </div>
+</div>
+
+@if (error(); as message) {
+  <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+}
+
+@if (data(); as d) {
+  @if (d.counts.held > 0) {
+    <nz-alert
+      class="block"
+      nzType="error"
+      nzShowIcon
+      [nzMessage]="d.counts.held + ' deposit' + (d.counts.held === 1 ? ' is' : 's are') + ' on hold'"
+      nzDescription="A top-up or sweep failed on chain. Check its transaction and the fee funder balance, then release it below." />
+  }
+  @if (stalledCount(d.sweepers) > 0) {
+    <nz-alert
+      class="block"
+      nzType="warning"
+      nzShowIcon
+      [nzMessage]="stalledCount(d.sweepers) + ' sweeper' + (stalledCount(d.sweepers) === 1 ? ' has' : 's have') + ' stalled'"
+      nzDescription="Credited deposits on that chain are not being moved to the treasury. Check its process and logs." />
+  }
+
+  <div class="counts block">
+    @for (key of stages; track key) {
+      <nz-card class="stat" [title]="stage[key].hint">
+        <nz-statistic [nzTitle]="stage[key].label" [nzValue]="d.counts[key]" />
+      </nz-card>
+    }
+    <nz-card class="stat" title="Moved to the treasury">
+      <nz-statistic nzTitle="swept" [nzValue]="d.counts.swept" />
+    </nz-card>
+  </div>
+
+  <section class="section">
+    <h2>Sweepers</h2>
+    <p class="muted">
+      When each chain's sweeper last made a pass. Each deposit goes to its project's treasury.
+      @if (updatedAt(); as at) {
+        Updated {{ at | date: 'mediumTime' }}.
+      }
+    </p>
+    <nz-table #sweepers [nzData]="d.sweepers" [nzShowPagination]="false" [nzScroll]="{ x: '760px' }">
+      <thead>
+        <tr>
+          <th nzWidth="220px">Chain</th>
+          <th nzWidth="130px">State</th>
+          <th>Last run</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (s of sweepers.data; track s.chain) {
+          <tr>
+            <td>{{ s.chain_name }}<div class="muted"><code>{{ s.chain }}</code></div></td>
+            <td>
+              @switch (state(s)) {
+                @case ('running') {
+                  <nz-tag nzColor="success">running</nz-tag>
+                }
+                @case ('stalled') {
+                  <nz-tag nzColor="error">stalled</nz-tag>
+                }
+                @default {
+                  <nz-tag>not started</nz-tag>
+                }
+              }
+            </td>
+            <td>
+              @if (minutesSince(s); as minutes) {
+                {{ minutes }} min ago
+              } @else if (minutesSince(s) === 0) {
+                just now
+              } @else {
+                <span class="muted">never</span>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </nz-table>
+  </section>
+
+  <section class="section">
+    <h2>Queue</h2>
+    <p class="muted">Credited deposits not swept yet, oldest first.</p>
+    <nz-table #queue [nzData]="d.queue" [nzShowPagination]="false" [nzNoResult]="emptyQueue" [nzScroll]="{ x: '1100px' }">
+      <thead>
+        <tr>
+          <th nzWidth="110px">Credited</th>
+          <th nzWidth="100px">Account</th>
+          <th nzWidth="140px">Asset</th>
+          <th nzAlign="right" nzWidth="120px">Amount</th>
+          <th nzWidth="150px">Stage</th>
+          <th>Transactions</th>
+          <th nzRight nzWidth="160px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of queue.data; track item.id) {
+          <tr>
+            <td>{{ item.confirmed_at | date: 'short' }}</td>
+            <td><code>{{ item.account_id }}</code></td>
+            <td><strong>{{ item.asset }}</strong><div class="muted">{{ item.chain_name }}</div></td>
+            <td nzAlign="right">{{ formatUnits(item.received_amount, item.decimals) }}</td>
+            <td>
+              <nz-tag [nzColor]="stage[stageOf(item)].color" nz-tooltip [nzTooltipTitle]="stage[stageOf(item)].hint">
+                {{ stage[stageOf(item)].label }}
+              </nz-tag>
+            </td>
+            <td>
+              @if (item.fee_tx_url) {
+                <div>gas top-up <a [href]="item.fee_tx_url" target="_blank" rel="noopener"><code>{{ short(item.fee_tx_hash!) }}</code></a></div>
+              }
+              @if (item.sweep_tx_url) {
+                <div>sweep <a [href]="item.sweep_tx_url" target="_blank" rel="noopener"><code>{{ short(item.sweep_tx_hash!) }}</code></a></div>
+              }
+              @if (item.sweep_hold) {
+                <div class="hold">{{ item.sweep_hold }}</div>
+              }
+              @if (!item.fee_tx_url && !item.sweep_tx_url && !item.sweep_hold) {
+                <span class="muted">none yet</span>
+              }
+            </td>
+            <td nzRight class="actions">
+              @if (item.sweep_hold) {
+                <button
+                  nz-button
+                  nzType="text"
+                  class="release"
+                  nz-tooltip
+                  nzTooltipTitle="Release"
+                  aria-label="Release"
+                  [nzLoading]="releasing() === item.id"
+                  nz-popconfirm
+                  nzPopconfirmTitle="Release this deposit so the sweeper tries again?"
+                  nzOkText="Release"
+                  (nzOnConfirm)="release(item)">
+                  @if (releasing() !== item.id) {
+                    <nz-icon nzType="reload" />
+                  }
+                </button>
+              }
+              <a nz-button nzType="text" nz-tooltip nzTooltipTitle="Detail" aria-label="Detail"
+                 [routerLink]="['/dashboard/deposit', item.id]">
+                <nz-icon nzType="eye" />
+              </a>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </nz-table>
+  </section>
+
+  <section class="section">
+    <h2>Recently swept</h2>
+    <p class="muted">The latest deposits moved to the treasury, newest first.</p>
+    <nz-table #recent [nzData]="d.recent" [nzShowPagination]="false" [nzNoResult]="emptyRecent" [nzScroll]="{ x: '900px' }">
+      <thead>
+        <tr>
+          <th nzWidth="160px">Swept</th>
+          <th nzWidth="100px">Account</th>
+          <th nzWidth="140px">Asset</th>
+          <th nzAlign="right" nzWidth="120px">Amount</th>
+          <th>Sweep transaction</th>
+          <th nzRight nzWidth="80px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of recent.data; track item.id) {
+          <tr>
+            <td>
+              @if (item.swept_at) {
+                {{ item.swept_at | date: 'short' }}
+              } @else {
+                <span class="muted">before tracking</span>
+              }
+            </td>
+            <td><code>{{ item.account_id }}</code></td>
+            <td><strong>{{ item.asset }}</strong><div class="muted">{{ item.chain_name }}</div></td>
+            <td nzAlign="right">{{ formatUnits(item.received_amount, item.decimals) }}</td>
+            <td>
+              @if (item.sweep_tx_url) {
+                <a [href]="item.sweep_tx_url" target="_blank" rel="noopener"><code>{{ short(item.sweep_tx_hash!) }}</code> <nz-icon nzType="export" /></a>
+              }
+            </td>
+            <td nzRight class="actions">
+              <a nz-button nzType="text" nz-tooltip nzTooltipTitle="Detail" aria-label="Detail"
+                 [routerLink]="['/dashboard/deposit', item.id]">
+                <nz-icon nzType="eye" />
+              </a>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </nz-table>
+  </section>
+} @else if (loading()) {
+  <nz-card><nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 8 }" /></nz-card>
+}
+
+<ng-template #emptyQueue>
+  <nz-empty nzNotFoundImage="simple" nzNotFoundContent="Nothing waiting: every credited deposit has been swept." />
+</ng-template>
+<ng-template #emptyRecent>
+  <nz-empty nzNotFoundImage="simple" nzNotFoundContent="No sweeps yet." />
+</ng-template>

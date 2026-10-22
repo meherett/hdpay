@@ -1,0 +1,9 @@
+# Only source/ and requirements.txt go into the image; settings and data come at run time.
+.env
+.env.*
+*.db
+*.db-journal
+tests
+.pytest_cache
+**/__pycache__
+**/*.py[cod]

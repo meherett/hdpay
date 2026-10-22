@@ -1,0 +1,18 @@
+<div class="passport">
+  <header class="passport-header">
+    <a routerLink="/login" class="brand">HDPay <small>admin</small></a>
+    <button nz-button nzType="text" class="theme-toggle" (click)="theme.toggle()"
+            [attr.aria-label]="theme.theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+            [title]="theme.theme() === 'dark' ? 'Light theme' : 'Dark theme'">
+      <nz-icon [nzType]="theme.theme() === 'dark' ? 'sun' : 'moon'" />
+    </button>
+  </header>
+
+  <main class="passport-body">
+    <router-outlet />
+  </main>
+
+  <footer class="passport-footer">
+    <small>&copy; {{ year }} HDPay</small>
+  </footer>
+</div>

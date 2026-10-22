@@ -1,0 +1,20 @@
+# Only api/, watcher/, sweeper/, requirements.txt and chains.example.yaml go into the image.
+.git
+.idea
+.vscode
+.venv
+.pytest_cache
+**/__pycache__
+**/*.py[cod]
+
+# secrets and local data: passed in at run time, never baked into the image
+.env
+.env.*
+envs
+chains.yaml
+*.db
+
+# the Angular apps, the example and the tests are not part of the services
+web
+example
+tests

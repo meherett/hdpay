@@ -1,0 +1,65 @@
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-search {
+  flex: 1 1 320px;
+}
+
+.filter {
+  width: 170px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.diff {
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-over {
+  color: var(--hd-warning);
+}
+
+.diff-short {
+  color: var(--hd-danger);
+}
+
+.diff-exact {
+  color: var(--hd-muted);
+}
+
+.address {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+
+  .filter {
+    width: 100%;
+  }
+}
+
+.date {
+  white-space: nowrap;
+}
+
+/* long product names stay on one line in the table; the full name is in the tooltip */
+.product {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}

@@ -1,0 +1,172 @@
+<div class="home">
+  <header class="home-header">
+    <a routerLink="/" class="brand">HDPay</a>
+  </header>
+
+  <main class="home-body">
+    <nz-card class="generate-card">
+      <h1>Checkout</h1>
+      <p class="subtitle">
+        Who is buying, what, and how to pay; then review it and get the payment address. The address is emailed to
+        the buyer with every step of the payment.
+      </p>
+
+      <nz-steps class="steps" nzSize="small" nzLabelPlacement="vertical" [nzCurrent]="step()" (nzIndexChange)="goTo($event)">
+        @for (title of steps; track title) {
+          <nz-step [nzTitle]="title" />
+        }
+      </nz-steps>
+
+      @if (error(); as message) {
+        <nz-alert class="block" nzType="error" nzShowIcon nzCloseable [nzMessage]="message" (nzOnClose)="error.set(null)" />
+      }
+
+      <form nz-form [formGroup]="formGroup" nzLayout="vertical" (ngSubmit)="step() === steps.length - 1 ? submit() : next()">
+        @switch (step()) {
+          @case (0) {
+            <nz-form-item>
+              <nz-form-label nzFor="account_id">Who is buying</nz-form-label>
+              <nz-form-control>
+                <nz-select nzId="account_id" formControlName="account_id" nzPlaceHolder="Choose a user" nzShowSearch
+                           [nzOptionHeightPx]="52">
+                  @for (u of users(); track u.account_id) {
+                    <nz-option nzCustomContent [nzValue]="u.account_id" [nzLabel]="u.name + ' · ' + u.account_id">
+                      <div class="user-option">
+                        <span>{{ u.name }}</span>
+                        <span class="user-option-note">{{ u.email }} · account {{ u.account_id }}</span>
+                      </div>
+                    </nz-option>
+                  }
+                </nz-select>
+              </nz-form-control>
+              @if (!users().length && !error()) {
+                <div class="hint">No users yet: run <code>python -m source.users seed</code> in example/api.</div>
+              }
+            </nz-form-item>
+          }
+
+          @case (1) {
+            <nz-form-item>
+              <nz-form-label>What to buy</nz-form-label>
+              <div class="choices" role="radiogroup" aria-label="Product">
+                @for (p of products(); track p.value) {
+                  <button type="button" class="choice" role="radio" [attr.aria-checked]="product()?.value === p.value"
+                          [class.selected]="product()?.value === p.value" (click)="choose(p)">
+                    <span class="choice-title">{{ p.name }}</span>
+                    @if (p.subname) {
+                      <span class="choice-note">{{ p.subname }}</span>
+                    }
+                    @if (priceAfter(p.price); as offered) {
+                      <span class="choice-detail"><s class="old-price">${{ p.price }}</s> ${{ offered }}</span>
+                      <nz-tag class="offer" nzColor="green">{{ percent() }}% off</nz-tag>
+                    } @else {
+                      <span class="choice-detail">${{ p.price }}</span>
+                    }
+                  </button>
+                } @empty {
+                  <div class="hint">Nothing for sale yet: give the project's products a price in HDPay's admin.</div>
+                }
+              </div>
+            </nz-form-item>
+
+            <p class="muted offer-note">
+              A discount for this customer on this product (optional): a percent off until a date and time. HDPay keeps it with the
+              address; paid in full before then it holds, and anything still owed after it is owed at the full price.
+            </p>
+            <div class="split">
+              <nz-form-item>
+                <nz-form-label nzFor="discount_percent">Discount %</nz-form-label>
+                <nz-form-control nzErrorTip="A whole number from 1 to 99">
+                  <input nz-input id="discount_percent" formControlName="discount_percent" type="number" min="1" max="99"
+                         inputmode="numeric" placeholder="20" />
+                </nz-form-control>
+              </nz-form-item>
+              <nz-form-item>
+                <nz-form-label nzFor="discount_ends_at">Discount ends</nz-form-label>
+                <nz-form-control nzErrorTip="A time in the future">
+                  <input nz-input id="discount_ends_at" formControlName="discount_ends_at" type="datetime-local" />
+                </nz-form-control>
+              </nz-form-item>
+            </div>
+            @if (formGroup.errors?.['discountPair']) {
+              <div class="hint error">Set both a percent and an end, or neither.</div>
+            }
+            <nz-form-item>
+              <nz-form-label>Pay with</nz-form-label>
+              <div class="choices" role="radiogroup" aria-label="Payment method">
+                @for (m of methods(); track m.chain + m.asset) {
+                  <button type="button" class="choice" role="radio" [attr.aria-checked]="isChosen(m)"
+                          [class.selected]="isChosen(m)" (click)="pay(m)" (dblclick)="next()">
+                    <span class="method-coin">
+                      <span class="choice-title">{{ m.asset }}</span>
+                      @if (m.standard) {
+                        <nz-tag class="method-standard">{{ m.standard }}</nz-tag>
+                      }
+                    </span>
+                    <span class="choice-detail">{{ m.chainName }}</span>
+                  </button>
+                } @empty {
+                  <div class="hint">No way to pay yet: the project accepts no USDT or USDC.</div>
+                }
+              </div>
+            </nz-form-item>
+          }
+
+          @case (2) {
+            <dl class="review">
+              <dt>User</dt>
+              <dd>{{ user()?.name }}</dd>
+              <dt>Email</dt>
+              <dd>{{ user()?.email }}</dd>
+              <dt>Account ID</dt>
+              <dd><code>{{ user()?.account_id }}</code></dd>
+              <dt>Product</dt>
+              <dd>{{ product()?.name }}</dd>
+              @if (discounted()) {
+                <dt>Discount</dt>
+                <dd>
+                  <nz-tag nzColor="green">{{ formGroup.value.discount_percent }}% off</nz-tag>
+                  until {{ formGroup.value.discount_ends_at | date: 'MMM d, y HH:mm' }}
+                  @if (discountLeft(); as left) {
+                    <div><nz-tag class="countdown" [nzColor]="left.soon ? 'orange' : 'blue'">{{ left.text }}</nz-tag></div>
+                    @if (left.ended) {
+                      <div class="hint error">The discount ended: go back and set a later end, or clear it.</div>
+                    }
+                  }
+                </dd>
+              }
+              <dt>Pay with</dt>
+              <dd>{{ method()?.asset }} @if (method()?.standard) { ({{ method()?.standard }}) } on {{ method()?.chainName }}</dd>
+              <dt>Total</dt>
+              <dd class="total">
+                @if (discounted(); as price) {
+                  {{ price }} {{ method()?.asset }} <s class="old-price">${{ product()?.price }}</s>
+                } @else {
+                  {{ product()?.price }} {{ method()?.asset }} <span class="muted">(${{ product()?.price }})</span>
+                }
+              </dd>
+            </dl>
+          }
+        }
+
+        <div class="actions">
+          @if (step() > 0) {
+            <button nz-button type="button" (click)="back()" [disabled]="loading()">Back</button>
+          }
+          @if (step() < steps.length - 1) {
+            <button nz-button nzType="primary" type="submit" [disabled]="!stepDone()">Next</button>
+          } @else {
+            <button nz-button nzType="primary" type="submit" [disabled]="formGroup.invalid || discountLeft()?.ended"
+                    [nzLoading]="loading()">
+              Get payment address
+            </button>
+          }
+        </div>
+      </form>
+    </nz-card>
+  </main>
+
+  <footer class="home-footer">
+    <small>&copy; {{ year }} HDPay</small>
+  </footer>
+</div>

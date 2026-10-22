@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments: envs/*.env hold connection strings and secrets; only the *.env.example templates are committed
+.venv/
+.env
+.env.*
+!.env.example
+envs/*.env
+
+# Local databases
+*.db
+*.db-journal
+*.sqlite3
+
+# Tooling
+.idea/
+.vscode/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Chains file with private RPC URLs (access tokens); chains.example.yaml is the committed template
+chains.yaml
+chains.json

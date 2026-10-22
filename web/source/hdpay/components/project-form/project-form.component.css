@@ -1,0 +1,324 @@
+/* a grid of cards in two columns, each a heading, a short note and its fields */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section {
+  padding: 20px 24px;
+  border: 1px solid var(--hd-border);
+  border-radius: 6px;
+  background: var(--hd-surface);
+}
+
+.section h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.owner-only {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  vertical-align: middle;
+}
+
+.note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.fields nz-form-item {
+  margin-bottom: 0;
+}
+
+/* the project: name and website side by side, the description under them */
+.about {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px 16px;
+  align-items: start;
+}
+
+.about .wide {
+  grid-column: 1 / -1;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* products: a compact table */
+.product-head,
+.product-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(90px, 0.8fr) 32px;
+  gap: 8px;
+  align-items: start;
+}
+
+.product-head {
+  padding: 0 0 6px;
+  font-size: 12px;
+  color: var(--hd-muted);
+}
+
+.product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.product-row {
+  background: var(--hd-surface);
+}
+
+.handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  color: var(--hd-muted);
+  cursor: grab;
+}
+
+.handle.hidden {
+  visibility: hidden;
+}
+
+.empty {
+  margin: 0;
+}
+
+.add {
+  margin-top: 12px;
+}
+
+/* networks: Accepted and Available, side by side */
+.boards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* a line between Accepted and Available, with the same room on each side */
+.board:first-child {
+  padding-right: 16px;
+}
+
+.board + .board {
+  padding-left: 16px;
+  border-left: 1px solid color-mix(in srgb, var(--hd-text) 10%, transparent);
+}
+
+.board-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hd-muted);
+}
+
+.count {
+  margin-left: 4px;
+  font-weight: 400;
+}
+
+/* a plain list; its outline shows where a network can land, and lights up while one is dragged over */
+.drop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  padding: 4px;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  background: transparent;
+  transition: border-color 150ms, background 150ms;
+}
+
+.drop:has(.placeholder),
+.cdk-drop-list-dragging {
+  border-color: color-mix(in srgb, var(--hd-text) 15%, transparent);
+}
+
+.cdk-drop-list-receiving,
+.cdk-drop-list-dragging:hover {
+  border-color: var(--hd-accent);
+  background: color-mix(in srgb, var(--hd-accent) 4%, transparent);
+}
+
+.network {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--hd-text) 10%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  transition: border-color 150ms;
+}
+
+.network:hover {
+  border-color: color-mix(in srgb, var(--hd-text) 22%, transparent);
+}
+
+.network-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.network-head .handle {
+  width: 16px;
+  height: 20px;
+}
+
+.family {
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--hd-muted);
+  background: color-mix(in srgb, var(--hd-text) 5%, transparent);
+}
+
+.network-action {
+  margin-left: auto;
+  color: var(--hd-muted);
+}
+
+.network-action:hover {
+  color: var(--hd-text);
+}
+
+.coins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0 22px;
+}
+
+/* coins as soft pills: a chosen one tinted with a check, the rest outlined */
+.coins nz-tag,
+.coins .coin {
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--hd-text) 15%, transparent);
+  border-radius: 6px;
+  line-height: 22px;
+  color: var(--hd-muted);
+  background: transparent;
+  transition: all 150ms;
+}
+
+.coins nz-tag:hover {
+  color: #52c41a;
+  border-color: #52c41a;
+}
+
+.coins nz-tag.ant-tag-checkable-checked {
+  color: #52c41a;
+  border-color: #52c41a;
+  background: transparent;
+}
+
+/* an available network's coins: the same pills, just to read */
+.coins .coin {
+  display: inline-block;
+  font-size: 12px;
+}
+
+.coins small {
+  margin-left: 3px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 100px;
+  color: var(--hd-muted);
+  font-size: 13px;
+}
+
+/* the item being dragged, and where it would land */
+.cdk-drag-preview {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.35;
+}
+
+.cdk-drag-animating,
+.cdk-drop-list-dragging .cdk-drag {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* treasury and timing: compact */
+.treasury {
+  display: grid;
+  gap: 12px;
+}
+
+.timing {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.timing nz-input-number {
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+@media (max-width: 1100px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .board:first-child {
+    padding-right: 0;
+  }
+
+  .board + .board {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .boards {
+    gap: 16px;
+  }
+
+  .boards,
+  .timing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .product-head {
+    display: none;
+  }
+
+  .product-row {
+    grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) 36px;
+  }
+}

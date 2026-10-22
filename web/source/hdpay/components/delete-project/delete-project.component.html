@@ -1,0 +1,15 @@
+<nz-modal [nzVisible]="!!project()" nzTitle="Delete project" nzOkText="Delete everything" nzOkDanger
+          [nzOkDisabled]="name() !== project()?.name" [nzOkLoading]="deleting()"
+          (nzOnOk)="remove()" (nzOnCancel)="closed.emit()">
+  <ng-container *nzModalContent>
+    @if (project(); as p) {
+      <p>
+        This deletes <strong>{{ p.name }}</strong>, its API keys, all its deposit addresses and its events. HDPay stops
+        watching and sweeping those addresses: coins still on them stay on chain, reachable only with the master key.
+        This cannot be undone.
+      </p>
+      <p>Type the project's name to confirm.</p>
+      <input nz-input [value]="name()" (input)="name.set($any($event.target).value)" [placeholder]="p.name" autocomplete="off" />
+    }
+  </ng-container>
+</nz-modal>

@@ -1,0 +1,110 @@
+"""Opening deposits and recording what happens to them, shared by the gateway, the admin and the workers."""
+
+from datetime import timedelta
+from typing import Any
+
+from fastapi import HTTPException
+from pymongo.database import Database
+
+from . import discounts, events
+from .chains import CHAINS
+from .db import Deposit, Status, find_deposit, next_value, utcnow
+from .keys import address_at, full_path
+from .projects import USD_STABLECOINS, accepted, get_project, price_amount, setting
+from .schemas import CreateDeposit, ProjectDepositOut
+
+
+def get_deposit_or_404(db: Database, deposit_id: str, project_id: str | None = None) -> Deposit:
+    deposit = find_deposit(db, deposit_id)
+    if deposit is None or (project_id is not None and deposit.project_id != project_id):
+        raise HTTPException(404, "deposit not found")
+    return deposit
+
+
+def notify(db: Database, deposit: Deposit, event_type: str, project: dict[str, Any] | None = None) -> None:
+    """Record an event for the deposit's project, with the deposit as the project sees it now."""
+    project = project or get_project(db, deposit.project_id)
+    snapshot = ProjectDepositOut.from_deposit(deposit, project).model_dump(mode="json")
+    events.emit(db, deposit, event_type, snapshot)
+
+
+def notify_status(db: Database, deposit: Deposit, project: dict[str, Any] | None = None) -> None:
+    """The event for the status the deposit just moved to."""
+    event_type = events.EVENT_FOR_STATUS.get(deposit.status)
+    if event_type:
+        notify(db, deposit, event_type, project)
+
+
+def open_deposit(db: Database, project: dict[str, Any], body: CreateDeposit) -> Deposit:
+    """The account's open deposit for this network, asset and product, or a new one on a fresh address."""
+    chain = CHAINS.get(body.chain)
+    usable = {c.key: assets for c, assets in accepted(project)}
+    if chain is None or chain.key not in usable:
+        names = ", ".join(usable) or "none yet"
+        raise HTTPException(422, f"this project does not accept {body.chain!r}; it accepts {names}")
+    if body.asset not in usable[chain.key]:
+        raise HTTPException(422, f"this project accepts {', '.join(usable[chain.key])} on {chain.name}, not {body.asset!r}")
+    listed = [p["value"] for p in project.get("products") or []]
+    if listed and body.product not in listed:
+        raise HTTPException(422, f"product must be one of {', '.join(listed)}")
+    if not listed and body.product is not None:
+        raise HTTPException(422, "this project has no products, so leave product out")
+    product = next((p for p in project.get("products") or [] if p["value"] == body.product), None)
+    now = utcnow()
+    discount = None
+    if product and product.get("price"):
+        # the product's price (less this deposit's discount) sets the amount, so a checkout page cannot change it
+        price = product["price"]
+        if body.discount_percent:
+            price = discounts.discounted_price(product["price"], body.discount_percent)
+        if body.asset not in USD_STABLECOINS:
+            raise HTTPException(422, f"{product['name']} costs ${price}: pay it in {' or '.join(USD_STABLECOINS)}")
+        expected = price_amount(price, chain.decimals(body.asset))
+        if body.expected_amount is not None and body.expected_amount != expected:
+            raise HTTPException(422, f"{product['name']} costs ${price}: leave expected_amount out, it follows the price")
+        body = body.model_copy(update={"expected_amount": expected})
+        if body.discount_percent:
+            full = price_amount(product["price"], chain.decimals(body.asset))
+            discount = discounts.snapshot(body.discount_percent, body.discount_ends_at, full, expected)
+    elif body.discount_percent:
+        raise HTTPException(422, "a discount is a percent off a product's price: give a product that has a price")
+
+    # One open deposit per account, network, asset, product and discount: reuse it instead of burning an index
+    # on every click. A different discount gets its own address.
+    existing = db.deposits.find_one({
+        "project_id": project["_id"],
+        "account_id": body.account_id,
+        "chain": chain.key,
+        "asset": body.asset,
+        "product": body.product,
+        "status": Status.PENDING.value,
+        "expires_at": {"$gt": now},
+        **({"discount.percent": discount["percent"], "discount.ends_at": discount["ends_at"]} if discount else {"discount": None}),
+    })
+    if existing:
+        return Deposit(existing)
+
+    # A fresh address every time the previous one has run out: the account's next index for today.
+    # Expired addresses stay watched, but are never handed out again.
+    day, account_id = now.date(), int(body.account_id)
+    index = next_value(db, f"address_index:{project['_id']}:{chain.family}:{day.isoformat()}:{body.account_id}")
+    deposit = Deposit.new(
+        project_id=project["_id"],
+        project_number=project["number"],
+        account_id=body.account_id,
+        product=body.product,
+        chain=chain.key,
+        family=chain.family.value,
+        asset=body.asset,
+        derivation_date=day.isoformat(),
+        index=index,
+        path=full_path(project["number"], chain.family, day, account_id, index),
+        address=address_at(chain.family, project["xpubs"][chain.family], day, account_id, index),
+        expected_amount=str(body.expected_amount) if body.expected_amount else None,
+        created_at=now,
+        expires_at=now + timedelta(minutes=setting(project, "deposit_ttl_minutes")),
+        **({"discount": discount} if discount else {}),
+    )
+    deposit.insert(db)
+    notify(db, deposit, "deposit.created", project)
+    return deposit

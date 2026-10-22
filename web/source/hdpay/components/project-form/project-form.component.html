@@ -1,0 +1,266 @@
+<form nz-form [formGroup]="form" nzLayout="vertical" (ngSubmit)="submit()">
+  <!-- two columns: what a project is and sells on the left, where and how it is paid on the right -->
+  <div class="columns">
+    <div class="column">
+      <section class="section">
+        <h3>Project</h3>
+        <div class="fields">
+          <div class="about">
+            <nz-form-item>
+              <nz-form-label nzFor="project_name">Name</nz-form-label>
+              <nz-form-control nzErrorTip="Name is required">
+                <input nz-input id="project_name" formControlName="name" autocomplete="off" placeholder="Trading platform" />
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item>
+              <nz-form-label nzFor="project_website">Website</nz-form-label>
+              <nz-form-control nzErrorTip="A web address like https://example.com">
+                <input nz-input id="project_website" formControlName="website" autocomplete="off" spellcheck="false"
+                       placeholder="https://example.com" />
+              </nz-form-control>
+            </nz-form-item>
+            <nz-form-item class="wide">
+              <nz-form-label nzFor="project_description">Description</nz-form-label>
+              <nz-form-control nzErrorTip="At most 500 characters">
+                <textarea nz-input id="project_description" formControlName="description" rows="2"
+                          placeholder="What the project is, for the admin (optional)"></textarea>
+              </nz-form-control>
+            </nz-form-item>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Products</h3>
+        <p class="muted note">
+          The <strong>value</strong> is stored on each deposit, the <strong>name</strong> is shown and the
+          <strong>note</strong> appears in product lists. A USD <strong>price</strong> is paid in USDT or USDC; without
+          one, the amount is entered. Drag to reorder.
+        </p>
+        <div class="fields">
+          @if (products.length) {
+            <div class="product-head" aria-hidden="true">
+              <span></span>
+              <span>Value</span>
+              <span>Name</span>
+              <span>Note</span>
+              <span>Price</span>
+              <span></span>
+            </div>
+          }
+          <div formArrayName="products" cdkDropList [cdkDropListDisabled]="readonly()" (cdkDropListDropped)="moveProduct($event)"
+               class="product-list">
+            @for (product of products.controls; track product; let i = $index) {
+              <div class="product-row" [formGroupName]="i" cdkDrag>
+                <span class="handle" cdkDragHandle [class.hidden]="readonly()" aria-label="Drag to reorder">
+                  <nz-icon nzType="holder" />
+                </span>
+                <nz-form-control [nzErrorTip]="valueError">
+                  <input nz-input formControlName="value" placeholder="100k" autocomplete="off" aria-label="Value" />
+                  <ng-template #valueError let-control>
+                    @if (control.errors?.['duplicate']) {
+                      Must be unique
+                    } @else {
+                      Required
+                    }
+                  </ng-template>
+                </nz-form-control>
+                <nz-form-control nzErrorTip="Required">
+                  <input nz-input formControlName="name" placeholder="$100,000" autocomplete="off" aria-label="Name" />
+                </nz-form-control>
+                <nz-form-control>
+                  <input nz-input formControlName="subname" placeholder="optional" autocomplete="off" aria-label="Note" />
+                </nz-form-control>
+                <nz-form-control nzErrorTip="Like 499 or 99.50">
+                  <nz-input-wrapper>
+                    <span nzInputPrefix>$</span>
+                    <input nz-input formControlName="price" placeholder="optional" inputmode="decimal" autocomplete="off" aria-label="Price" />
+                  </nz-input-wrapper>
+                </nz-form-control>
+                @if (!readonly()) {
+                  <button nz-button nzType="text" nzDanger type="button" (click)="removeProduct(i)" nz-tooltip
+                          nzTooltipTitle="Remove" aria-label="Remove product">
+                    <nz-icon nzType="delete" />
+                  </button>
+                } @else {
+                  <span></span>
+                }
+              </div>
+            } @empty {
+              <p class="muted empty">No products: deposits are opened for any amount, with no product.</p>
+            }
+          </div>
+          @if (!readonly()) {
+            <button nz-button nzType="dashed" type="button" class="add" (click)="addProduct()">
+              <nz-icon nzType="plus" />
+              Add product
+            </button>
+          }
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>
+          Treasury
+          @if (ownerFieldsLocked() && !readonly()) {
+            <nz-tag class="owner-only"><nz-icon nzType="lock" /> Owner only</nz-tag>
+          }
+        </h3>
+        <p class="muted note">
+          Where deposits are swept. A deposit waits until its family's treasury is set.
+        </p>
+        <div class="fields treasury">
+          <nz-form-item>
+            <nz-form-label nzFor="evm_treasury">EVM</nz-form-label>
+            <nz-form-control nzErrorTip="0x and 40 hex characters" nzExtra="Ethereum, BNB Smart Chain and their testnets">
+              <input nz-input id="evm_treasury" class="mono" formControlName="evm_treasury" autocomplete="off" spellcheck="false"
+                     placeholder="0x…" />
+            </nz-form-control>
+          </nz-form-item>
+          <nz-form-item>
+            <nz-form-label nzFor="tron_treasury">Tron</nz-form-label>
+            <nz-form-control nzErrorTip="A Tron address starting with T" nzExtra="Tron and Tron Nile">
+              <input nz-input id="tron_treasury" class="mono" formControlName="tron_treasury" autocomplete="off" spellcheck="false"
+                     placeholder="T…" />
+            </nz-form-control>
+          </nz-form-item>
+        </div>
+      </section>
+    </div>
+
+    <div class="column">
+      <section class="section">
+        <h3>Networks and assets</h3>
+        <p class="muted note">
+          Drag a network into <strong>Accepted</strong> (or press +) and pick its coins; drag back (or press ×) to stop.
+          Each family also needs the project's key (the Keys tab).
+        </p>
+        <div class="fields">
+          @if (chainsError(); as message) {
+            <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+          }
+          <div class="boards" cdkDropListGroup>
+            <div class="board">
+              <div class="board-title">Accepted <span class="count">{{ acceptedChains().length }}</span></div>
+              <div class="drop" cdkDropList cdkDropListData="accepted" [cdkDropListDisabled]="readonly()"
+                   (cdkDropListDropped)="dropChain($event)">
+                @for (chain of acceptedChains(); track chain.key) {
+                  <div class="network accepted" cdkDrag [cdkDragData]="chain">
+                    <div class="network-head">
+                      <span class="handle" cdkDragHandle [class.hidden]="readonly()"><nz-icon nzType="holder" /></span>
+                      <strong>{{ chain.name }}</strong>
+                      <span class="family">{{ chain.family }}</span>
+                      @if (!readonly()) {
+                        <button nz-button nzType="text" nzSize="small" type="button" class="network-action" (click)="removeChain(chain)"
+                                nz-tooltip nzTooltipTitle="Stop accepting" aria-label="Stop accepting">
+                          <nz-icon nzType="close" />
+                        </button>
+                      }
+                    </div>
+                    <div class="coins">
+                      @for (asset of chain.assets; track asset.symbol) {
+                        <nz-tag nzMode="checkable" [nzChecked]="isAccepted(chain.key, asset.symbol)"
+                                (nzCheckedChange)="toggle(chain, asset.symbol, $event)">
+                          {{ asset.symbol }}
+                          @if (asset.standard) {
+                            <small>{{ asset.standard }}</small>
+                          }
+                        </nz-tag>
+                      }
+                    </div>
+                  </div>
+                } @empty {
+                  <div class="placeholder">Drop a network here</div>
+                }
+              </div>
+            </div>
+
+            <div class="board">
+              <div class="board-title">Available <span class="count">{{ availableChains().length }}</span></div>
+              <div class="drop" cdkDropList cdkDropListData="available" [cdkDropListDisabled]="readonly()"
+                   (cdkDropListDropped)="dropChain($event)">
+                @for (chain of availableChains(); track chain.key) {
+                  <div class="network" cdkDrag [cdkDragData]="chain">
+                    <div class="network-head">
+                      <span class="handle" cdkDragHandle [class.hidden]="readonly()"><nz-icon nzType="holder" /></span>
+                      <strong>{{ chain.name }}</strong>
+                      <span class="family">{{ chain.family }}</span>
+                      @if (!readonly()) {
+                        <button nz-button nzType="text" nzSize="small" type="button" class="network-action" (click)="addChain(chain)"
+                                nz-tooltip nzTooltipTitle="Accept" aria-label="Accept">
+                          <nz-icon nzType="plus" />
+                        </button>
+                      }
+                    </div>
+                    <div class="coins">
+                      @for (asset of chain.assets; track asset.symbol) {
+                        <span class="coin">
+                          {{ asset.symbol }}
+                          @if (asset.standard) {
+                            <small>{{ asset.standard }}</small>
+                          }
+                        </span>
+                      }
+                    </div>
+                  </div>
+                } @empty {
+                  <div class="placeholder">Every network is accepted</div>
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>Timing</h3>
+        <div class="fields timing">
+          <nz-form-item>
+            <nz-form-label nzFor="deposit_ttl_minutes">Payment window</nz-form-label>
+            <nz-form-control nzErrorTip="1 to 10080" nzExtra="To send the payment">
+              <nz-input-number id="deposit_ttl_minutes" formControlName="deposit_ttl_minutes" [nzMin]="1" [nzMax]="10080" nzAddonAfter="min" />
+            </nz-form-control>
+          </nz-form-item>
+          <nz-form-item>
+            <nz-form-label nzFor="remainder_window_minutes">Remainder window</nz-form-label>
+            <nz-form-control nzErrorTip="1 to 10080" nzExtra="To send the rest of a short one">
+              <nz-input-number id="remainder_window_minutes" formControlName="remainder_window_minutes" [nzMin]="1" [nzMax]="10080" nzAddonAfter="min" />
+            </nz-form-control>
+          </nz-form-item>
+          <nz-form-item>
+            <nz-form-label nzFor="amount_tolerance_bps">Tolerance</nz-form-label>
+            <nz-form-control nzErrorTip="0 to 10000" nzExtra="50 bps = 0.50% short still counts">
+              <nz-input-number id="amount_tolerance_bps" formControlName="amount_tolerance_bps" [nzMin]="0" [nzMax]="10000" nzAddonAfter="bps" />
+            </nz-form-control>
+          </nz-form-item>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>
+          Allowed IPs
+          @if (ownerFieldsLocked() && !readonly()) {
+            <nz-tag class="owner-only"><nz-icon nzType="lock" /> Owner only</nz-tag>
+          }
+        </h3>
+        <p class="muted note">
+          API keys work only from these addresses or ranges. Empty allows any.
+        </p>
+        <div class="fields">
+          <nz-form-item>
+            <nz-form-control nzExtra="Type an address or range, like 203.0.113.7 or 198.51.100.0/24, and press Enter.">
+              <nz-select formControlName="allowed_ips" nzMode="tags" [nzTokenSeparators]="[',', ' ']" nzPlaceHolder="Any IP"
+                         [nzOpen]="false" nzShowArrow="false" />
+            </nz-form-control>
+          </nz-form-item>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  @if (!readonly()) {
+    <div class="actions">
+      <button nz-button nzType="primary" type="submit" [nzLoading]="saving()">{{ submitLabel() }}</button>
+    </div>
+  }
+</form>

@@ -1,0 +1,15 @@
+[project]
+name = "hdpay"
+version = "0.1.0"
+description = "Hierarchical Deterministic (HD) Pay: a payment gateway giving every deposit its own address, per project."
+readme = "README.md"
+requires-python = ">=3.14"
+
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:mongomock.*",
+    "ignore:websockets.legacy is deprecated:DeprecationWarning",
+    "ignore:Using `httpx` with `starlette.testclient`",
+]

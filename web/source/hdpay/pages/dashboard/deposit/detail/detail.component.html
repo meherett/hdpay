@@ -1,0 +1,254 @@
+<div class="page-head">
+  <div>
+    @if (deposit(); as d) {
+      <h1>
+        {{ expected() ? expected() + ' ' : '' }}{{ d.asset }} on {{ d.chain_name }}
+        @if (d.discount && d.discount.amount === d.expected_amount) {
+          <s class="was">{{ formatUnits(d.discount.full_amount, d.decimals) }}</s>
+        }
+      </h1>
+      <p>
+        <nz-tag [nzColor]="status[d.internal_status].color">{{ status[d.internal_status].label }}</nz-tag>
+        @if (d.late) {
+          <nz-tag nzColor="gold">late</nz-tag>
+        }
+        @if (discountState(d); as state) {
+          <nz-tag [nzColor]="discountStatus[state].color">{{ d.discount?.percent }}% off</nz-tag>
+        }
+      </p>
+    } @else {
+      <h1>Deposit</h1>
+    }
+  </div>
+  <div class="page-actions">
+    @if (checkoutUrl(); as url) {
+      <a nz-button [href]="url" target="_blank" rel="noopener">
+        <nz-icon nzType="export" />
+        Open checkout
+      </a>
+    }
+    @if (auth.isOwner() && deposit(); as d) {
+      <button nz-button nzDanger nz-popconfirm [nzPopconfirmTitle]="deleteWarning(d)" nzPopconfirmPlacement="bottomRight"
+              nzOkText="Delete" nzOkDanger [nzLoading]="deleting()" (nzOnConfirm)="remove(d)">
+        <nz-icon nzType="delete" />
+        Delete
+      </button>
+    }
+  </div>
+</div>
+
+@if (error(); as message) {
+  <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+}
+
+@if (deposit(); as d) {
+  @if (d.internal_status === 'needs_review') {
+    <nz-alert
+      class="block"
+      nzType="warning"
+      nzShowIcon
+      nzMessage="The rest of this payment never came"
+      [nzDescription]="reviewNote"
+      [nzAction]="reviewActions" />
+    <ng-template #reviewNote>
+      @if (expected()) {
+        Received <strong>{{ received() }} {{ d.asset }}</strong> of {{ expected() }}:
+        <strong>{{ owed() }} {{ d.asset }}</strong> still owed.
+      } @else {
+        Received <strong>{{ received() }} {{ d.asset }}</strong>.
+      }
+      The time to send the rest has run out and the address is no longer watched. <strong>Reopen</strong> it to give the
+      customer more time to send the rest, or <strong>Credit</strong> it to accept what came as paid, so it is swept.
+    </ng-template>
+  }
+
+  @if (d.internal_status === 'partial') {
+    <nz-alert
+      class="block"
+      nzType="info"
+      nzShowIcon
+      nzMessage="Underpaid: waiting for the rest"
+      [nzDescription]="partialNote"
+      [nzAction]="creditAction" />
+    <ng-template #partialNote>
+      @if (expected()) {
+        Received <strong>{{ received() }} {{ d.asset }}</strong> of {{ expected() }}:
+        <strong>{{ owed() }} {{ d.asset }}</strong> still owed.
+      } @else {
+        Received <strong>{{ received() }} {{ d.asset }}</strong>.
+      }
+      The customer can send the rest to the same address until
+      <strong>{{ d.expires_at | date: 'MMM d, y h:mm a' }}</strong>; if it does not come, the deposit goes to review.
+      <strong>Credit</strong> it now only if you agreed the shortfall with the customer.
+    </ng-template>
+  }
+
+  @if (d.sweep_hold) {
+    <nz-alert
+      class="block"
+      nzType="error"
+      nzShowIcon
+      nzMessage="The sweeper stopped on this deposit"
+      [nzDescription]="holdNote"
+      [nzAction]="releaseAction" />
+    <ng-template #holdNote>
+      {{ d.sweep_hold }}. The funds stay on the deposit address until this is fixed: check the transaction, fix the cause
+      (often an empty fee funder, see the project's Balances tab), then <strong>Release</strong> it so the sweeper tries again.
+    </ng-template>
+  }
+
+  <nz-card class="block" nzTitle="Payment">
+    <nz-descriptions nzBordered [nzColumn]="{ xs: 1, sm: 1, md: 2 }">
+      <nz-descriptions-item nzTitle="Expected">
+        {{ expected() ? expected() + ' ' + d.asset : 'any amount' }}
+      </nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Received">{{ received() }} {{ d.asset }}</nz-descriptions-item>
+      @if (owedNow(); as rest) {
+        <nz-descriptions-item nzTitle="Owes now">
+          <strong>{{ rest }} {{ d.asset }}</strong>
+        </nz-descriptions-item>
+      }
+      <nz-descriptions-item nzTitle="Customer sees"><code>{{ d.status }}</code></nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Project">
+        <a [routerLink]="['/dashboard/project', d.project_id]">{{ d.project_name ?? d.project_id }}</a>
+      </nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Account ID"><code>{{ d.account_id }}</code></nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Product">{{ d.product_name ?? '—' }}</nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Date">{{ d.created_at | date: 'medium' }}</nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Payment window ends">{{ d.expires_at | date: 'medium' }}</nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Confirmed">
+        @if (d.confirmed_at) {
+          {{ d.confirmed_at | date: 'medium' }}
+        } @else {
+          <span class="muted">not yet</span>
+        }
+      </nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Reference">
+        <code>{{ d.id }}</code>
+        <button nz-button nzType="text" nzSize="small" (click)="copy(d.id, 'Reference')" aria-label="Copy reference">
+          <nz-icon nzType="copy" />
+        </button>
+      </nz-descriptions-item>
+    </nz-descriptions>
+  </nz-card>
+
+  @if (d.discount; as discount) {
+    @let state = discountState(d) ?? discount.status;
+    <nz-card class="block" nzTitle="Discount" [nzExtra]="discountTag">
+      <ng-template #discountTag>
+        <nz-tag [nzColor]="discountStatus[state].color">{{ discountStatus[state].label }}</nz-tag>
+      </ng-template>
+      <nz-descriptions nzBordered [nzColumn]="{ xs: 1, sm: 1, md: 2 }">
+        <nz-descriptions-item nzTitle="Discount">
+          <strong>{{ discount.percent }}%</strong> for account <code>{{ d.account_id }}</code>
+        </nz-descriptions-item>
+        <nz-descriptions-item nzTitle="Ends">
+          {{ discount.ends_at | date: 'MMM d, y h:mm a' }}
+          <span class="muted">({{ discountEndsIn(discount.ends_at) }})</span>
+        </nz-descriptions-item>
+        <nz-descriptions-item nzTitle="Original price">
+          {{ formatUnits(discount.full_amount, d.decimals) }} {{ d.asset }}
+        </nz-descriptions-item>
+        <nz-descriptions-item nzTitle="Discounted price">
+          {{ formatUnits(discount.amount, d.decimals) }} {{ d.asset }}
+          <span class="muted">(saves {{ formatUnits(saving(discount), d.decimals) }})</span>
+        </nz-descriptions-item>
+        <nz-descriptions-item nzTitle="Expected now" [nzSpan]="2">
+          <strong>{{ expected() }} {{ d.asset }}</strong>
+          <div class="muted">
+            @switch (state) {
+              @case ('active') {
+                The discounted price, while it runs. Not paid in full by then, the address expects the original price.
+              }
+              @case ('kept') {
+                Paid in time: the discounted price was charged.
+              }
+              @case ('lapsed') {
+                It ended before this was paid in full, so the original price applies: the customer owes it less what
+                they sent.
+              }
+              @case ('honored') {
+                It had ended, and support kept it anyway.
+              }
+            }
+          </div>
+        </nz-descriptions-item>
+      </nz-descriptions>
+    </nz-card>
+  }
+
+  <nz-card class="block" nzTitle="On chain">
+    <nz-descriptions nzBordered [nzColumn]="1">
+      <nz-descriptions-item nzTitle="Address">
+        <a [href]="d.address_url" target="_blank" rel="noopener"><code>{{ d.address }}</code></a>
+        <button nz-button nzType="text" nzSize="small" (click)="copy(d.address, 'Address')" aria-label="Copy address">
+          <nz-icon nzType="copy" />
+        </button>
+      </nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Derivation path">
+        <code>{{ d.path }}</code>
+        <span class="muted"> account {{ d.account_id }}, {{ d.derivation_date }}, index {{ d.index }}</span>
+      </nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Payment transaction">
+        <ng-container *ngTemplateOutlet="tx; context: { hash: d.tx_hash, url: d.tx_url, extra: d.block_number ? 'block ' + d.block_number : '' }" />
+      </nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Fee top-up">
+        <ng-container *ngTemplateOutlet="tx; context: { hash: d.fee_tx_hash, url: d.fee_tx_url, extra: '' }" />
+      </nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Sweep">
+        <ng-container *ngTemplateOutlet="tx; context: { hash: d.sweep_tx_hash, url: d.sweep_tx_url, extra: d.swept_at ? 'swept ' + (d.swept_at | date: 'medium') : '' }" />
+      </nz-descriptions-item>
+      <nz-descriptions-item nzTitle="Confirmations required">{{ d.confirmations }}</nz-descriptions-item>
+    </nz-descriptions>
+  </nz-card>
+} @else if (loading()) {
+  <nz-card><nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 8 }" /></nz-card>
+}
+
+<ng-template #tx let-hash="hash" let-url="url" let-extra="extra">
+  @if (hash) {
+    <a [href]="url" target="_blank" rel="noopener"><code>{{ hash }}</code></a>
+    @if (extra) {
+      <span class="muted"> {{ extra }}</span>
+    }
+  } @else {
+    <span class="muted">none</span>
+  }
+</ng-template>
+
+<ng-template #releaseAction>
+  <button nz-button nzType="primary" nzSize="small" [nzLoading]="releasing()" [disabled]="!auth.isAdmin()" (click)="release()">
+    <nz-icon nzType="reload" />
+    Release
+  </button>
+</ng-template>
+
+<ng-template #reviewActions>
+  <div class="review-actions" [class.hidden]="!auth.isAdmin()">
+    @if (deposit()?.expected_amount) {
+      <button nz-button nzSize="small" (click)="reopenOpen.set(true)">
+        <nz-icon nzType="redo" />
+        Reopen
+      </button>
+    }
+    <ng-container *ngTemplateOutlet="creditAction" />
+  </div>
+</ng-template>
+
+<ng-template #creditAction>
+  <button
+    [class.hidden]="!auth.isAdmin()"
+    nz-button
+    nzType="primary"
+    nzSize="small"
+    [nzLoading]="crediting()"
+    nz-popconfirm
+    nzPopconfirmTitle="Credit this deposit as paid? This cannot be undone here."
+    nzOkText="Credit"
+    (nzOnConfirm)="credit()">
+    <nz-icon nzType="check" />
+    Credit
+  </button>
+</ng-template>
+
+<hdpay-reopen [deposit]="reopenOpen() ? deposit() : null" (closed)="reopenOpen.set(false)" (reopened)="onReopened($event)" />
