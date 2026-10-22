@@ -335,35 +335,39 @@ start with `docker compose --profile mongo up -d`; its data lives in the `mongo-
 
 ### On the VM: hdpay.systems
 
-As in qnode, nginx runs on the VM itself and sends each domain to a container's port; the ports listen on
-`127.0.0.1` only, so everything goes through nginx (and HTTPS). Cloudflare sits in front, with one origin
-certificate for `hdpay.systems` and `*.hdpay.systems`.
+nginx runs in Docker too (the `nginx` service, profile `nginx`): it takes 80 and 443 and sends each domain
+to a service by name, as `vm/nginx/sites-available/hdpay-systems.conf` says. The other ports listen on
+`127.0.0.1` only, so everything goes through nginx (and HTTPS). Cloudflare sits in front (SSL mode Full
+(strict)), with one certificate for `hdpay.systems` and `*.hdpay.systems`.
 
 | Address | Service |
 |---|---|
-| `hdpay.systems` | hdpay-web |
-| `hdpay.systems/api/...` and `api.hdpay.systems` | hdpay-api (the `/api` prefix is dropped) |
-| `example.hdpay.systems` | hdpay-example-web |
-| `example.hdpay.systems/api/...` | hdpay-example-api |
+| `hdpay.systems` | web |
+| `hdpay.systems/api/...` and `api.hdpay.systems` | api (the `/api` prefix is dropped) |
+| `example.hdpay.systems` | example-web |
+| `example.hdpay.systems/api/...` | example-api |
 
 ```bash
 git clone https://github.com/meherett/hdpay.git && cd hdpay
-cp envs/common.env.example envs/common.env       # and envs/sweeper.env, envs/example.env, chains.yaml
-cp vm/.env.example vm/.env                       # EXAMPLE_WEB_URL=https://example.hdpay.systems
-# the Cloudflare origin certificate and key (never committed):
-sudo mkdir -p /etc/ssl/certs/hdpay-systems /etc/ssl/private/hdpay-systems
-sudo cp origin.crt /etc/ssl/certs/hdpay-systems/origin.crt
-sudo cp private.key /etc/ssl/private/hdpay-systems/private.key && sudo chmod 600 /etc/ssl/private/hdpay-systems/private.key
-sudo cp vm/nginx/sites-available/hdpay-systems.conf /etc/nginx/sites-available/
-sudo ln -s /etc/nginx/sites-available/hdpay-systems.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-cd vm && docker login ghcr.io && docker compose --profile example pull && docker compose --profile example up -d
+# copy from your PC (never committed): envs/common.env, envs/sweeper.env (chmod 600), envs/example.env, chains.yaml
+cp vm/.env.example vm/.env       # COMPOSE_PROFILES=example,nginx and EXAMPLE_WEB_URL=https://example.hdpay.systems
+# the certificate and key (never committed), with these names:
+mkdir -p vm/ssl/certs/hdpay-systems vm/ssl/private/hdpay-systems
+#   vm/ssl/certs/hdpay-systems/origin.crt     (fullchain.pem from certbot, or a Cloudflare origin certificate)
+#   vm/ssl/private/hdpay-systems/private.key  (privkey.pem)
+chmod 600 vm/ssl/private/hdpay-systems/private.key
+cd vm
+docker login ghcr.io -u meherett                         # a token with read:packages
+docker compose pull
+docker compose up -d --no-build --remove-orphans          # COMPOSE_PROFILES in vm/.env adds the shop and nginx
+docker compose ps
 ```
 
+After renewing the certificate, replace the two files and run `docker compose restart nginx`.
+
 nginx trusts `CF-Connecting-IP` from Cloudflare's addresses only and passes the visitor's IP on; the api
-believes it from nginx (and the web app's nginx) only, so API-key allowed IPs and the sign-in limit see the
-real visitor. Never publish the ports beyond `127.0.0.1`: anyone who reached the api directly could claim
-any IP.
+believes it from nginx and the web app's nginx only (their fixed addresses on the compose network), so
+API-key allowed IPs and the sign-in limit see the real visitor.
 
 The example shop (its API on 8400, its checkout on http://localhost:4400):
 

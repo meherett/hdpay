@@ -14,8 +14,9 @@
 #   docker compose --profile example push        and publish them to ghcr.io/meherett (needs write:packages)
 #
 # The web app is at http://localhost:4500 and reaches the api through its own /api/, so it needs no CORS.
-# On the VM, nginx (nginx/sites-available/hdpay-systems.conf) serves them as hdpay.systems, api.hdpay.systems
-# and example.hdpay.systems; the ports listen on 127.0.0.1 only, so nothing goes around it.
+# On the VM, the nginx service (profile nginx) serves them as hdpay.systems, api.hdpay.systems and
+# example.hdpay.systems on 80 and 443, with the certificate in vm/ssl/; the other ports listen on
+# 127.0.0.1 only. vm/.env can switch the profiles on: COMPOSE_PROFILES=example,nginx
 # The example shop's settings are in envs/example.env (HDPAY_SECRET_KEY, SMTP_...); its users are
 # seeded with: docker compose run --rm example-api python -m source.users seed
 #
@@ -71,9 +72,9 @@ services:
       HDPAY_RELOAD: "false"
       HDPAY_CHAINS_FILE: /hdpay/chains.yaml
       HDPAY_PORT: "8090"
-      # who may pass on the caller's IP: the web app's nginx (below), and nginx on the VM, which reaches
-      # the published port through the network's gateway. Safe because the ports listen on 127.0.0.1 only.
-      HDPAY_FORWARDED_ALLOW_IPS: 172.28.0.10,172.28.0.1
+      # who may pass on the caller's IP: the web app's nginx and the nginx service (below), at their fixed
+      # addresses; anyone else's X-Forwarded-For is ignored
+      HDPAY_FORWARDED_ALLOW_IPS: 172.28.0.10,172.28.0.11
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health', timeout=3)"]
       interval: 30s
@@ -94,6 +95,36 @@ services:
     networks:
       default:
         ipv4_address: 172.28.0.10   # trusted by the api for X-Forwarded-For
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  # The way in, on the VM: hdpay.systems, api.hdpay.systems and example.hdpay.systems over HTTPS, routed
+  # to the services by name (nginx/sites-available/hdpay-systems.conf). Off by default (--profile nginx,
+  # or COMPOSE_PROFILES in vm/.env): it needs the certificate in vm/ssl/.
+  nginx:
+    image: nginx:1.29-alpine
+    profiles: ["nginx"]
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/sites-available:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      default:
+        ipv4_address: 172.28.0.11   # trusted by the api for X-Forwarded-For
+    healthcheck:
+      test: ["CMD", "nginx", "-t", "-q"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
     logging:
       driver: json-file
       options:
@@ -199,9 +230,9 @@ networks:
     ipam:
       config:
         - subnet: 172.28.0.0/16
-          # automatic addresses come from here, so web's fixed 172.28.0.10 is never taken first
+          # automatic addresses come from here, so the fixed ones (web 172.28.0.10, nginx 172.28.0.11)
+          # are never taken first
           ip_range: 172.28.1.0/24
-          # pinned: nginx on the VM reaches the published ports through it, and the api trusts it
           gateway: 172.28.0.1
 
 volumes:
