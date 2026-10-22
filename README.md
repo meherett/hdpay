@@ -291,16 +291,24 @@ Each part has its own Dockerfile:
 
 | Dockerfile | Image | Runs |
 |---|---|---|
-| `Dockerfile`, target `api` | `hdpay-api` | the api |
-| `Dockerfile`, target `watcher` | `hdpay-watcher` | a watcher, for the chain in `HDPAY_CHAIN` (or `--chain`) |
-| `Dockerfile`, target `sweeper` | `hdpay-sweeper` | a sweeper, for the chain in `HDPAY_CHAIN` (or `--chain`), with the master key |
-| `web/Dockerfile` | `hdpay-web` | the web app (the admin), served by nginx, which passes `/api/` on to the api |
-| `example/api/Dockerfile` | `hdpay-example-api` | the example shop's API; its SQLite database is in the `/data` volume |
-| `example/web/Dockerfile` | `hdpay-example-web` | the example checkout, served by nginx, which passes `/api/` on to the shop's API |
+| `Dockerfile`, target `api` | `ghcr.io/meherett/hdpay-api` | the api |
+| `Dockerfile`, target `watcher` | `ghcr.io/meherett/hdpay-watcher` | a watcher, for the chain in `HDPAY_CHAIN` (or `--chain`) |
+| `Dockerfile`, target `sweeper` | `ghcr.io/meherett/hdpay-sweeper` | a sweeper, for the chain in `HDPAY_CHAIN` (or `--chain`), with the master key |
+| `web/Dockerfile` | `ghcr.io/meherett/hdpay-web` | the web app (the admin), served by nginx, which passes `/api/` on to the api |
+| `example/api/Dockerfile` | `ghcr.io/meherett/hdpay-example-api` | the example shop's API; its SQLite database is in the `/data` volume |
+| `example/web/Dockerfile` | `ghcr.io/meherett/hdpay-example-web` | the example checkout, served by nginx, which passes `/api/` on to the shop's API |
 
 `docker-compose.yml` starts the api, the web app (http://localhost:4500), one watcher and one sweeper per
 chain (Sepolia and Tron Nile to begin with; copy a pair to add a chain), and optionally MongoDB and the
 example shop. The web apps reach their API through their own `/api/`, so no CORS is needed.
+
+The images are published, private, on GitHub's registry. After `docker login ghcr.io` (a classic token with
+`read:packages` to pull, `write:packages` to push), a server pulls them instead of building:
+
+```bash
+docker compose --profile example pull && docker compose --profile example up -d   # a server
+docker compose --profile example build && docker compose --profile example push   # publish new ones
+```
 
 ```bash
 cp envs/common.env.example envs/common.env     # HDPAY_MONGODB_URI (Atlas for now), HDPAY_JWT_SECRET, ...

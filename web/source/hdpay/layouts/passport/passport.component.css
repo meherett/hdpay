@@ -37,10 +37,3 @@
   color: var(--hd-muted);
 }
 
-.brand small {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--hd-muted);
-  text-transform: uppercase;
-}

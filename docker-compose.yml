@@ -6,6 +6,12 @@
 #   docker compose --profile example up -d       also the example shop: its API (8400) and checkout (4400)
 #   docker compose logs -f watcher-tron-nile
 #
+# The images are on GitHub's registry (private: docker login ghcr.io first, with a token that can read packages):
+#   docker compose --profile example pull        a server takes the published images, nothing is built
+#   docker compose --profile example up -d       and runs them
+#   docker compose --profile example build       here: build them under the same names (or up -d --build)
+#   docker compose --profile example push        and publish them to ghcr.io/meherett (needs write:packages)
+#
 # The web app is at http://localhost:4500 and reaches the api through its own /api/, so it needs no CORS.
 # The example shop's settings are in envs/example.env (HDPAY_SECRET_KEY, SMTP_...); its users are
 # seeded with: docker compose run --rm example-api python -m source.users seed
@@ -40,12 +46,12 @@ x-service: &service
 x-watcher: &watcher
   <<: *service
   build: { context: ., target: watcher }
-  image: hdpay-watcher:latest
+  image: ghcr.io/meherett/hdpay-watcher:latest
 
 x-sweeper: &sweeper
   <<: *service
   build: { context: ., target: sweeper }
-  image: hdpay-sweeper:latest
+  image: ghcr.io/meherett/hdpay-sweeper:latest
   env_file:
     - envs/common.env
     - path: envs/sweeper.env
@@ -55,7 +61,7 @@ services:
   api:
     <<: *service
     build: { context: ., target: api }
-    image: hdpay-api:latest
+    image: ghcr.io/meherett/hdpay-api:latest
     ports:
       - "8090:8090"
     environment:
@@ -73,7 +79,7 @@ services:
 
   web:
     build: ./web
-    image: hdpay-web:latest
+    image: ghcr.io/meherett/hdpay-web:latest
     restart: unless-stopped
     depends_on:
       - api
@@ -142,7 +148,7 @@ services:
   # The example shop, off by default: --profile example.
   example-api:
     build: ./example/api
-    image: hdpay-example-api:latest
+    image: ghcr.io/meherett/hdpay-example-api:latest
     profiles: ["example"]
     restart: unless-stopped
     depends_on:
@@ -160,7 +166,7 @@ services:
 
   example-web:
     build: ./example/web
-    image: hdpay-example-web:latest
+    image: ghcr.io/meherett/hdpay-example-web:latest
     profiles: ["example"]
     restart: unless-stopped
     depends_on:

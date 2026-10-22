@@ -6,6 +6,8 @@
 #   docker run --rm -v shop-data:/data hdpay-example-api python -m source.users seed
 
 FROM python:3.14-slim
+# links the image to the repository on GitHub (ghcr.io)
+LABEL org.opencontainers.image.source="https://github.com/meherett/hdpay"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HOST=0.0.0.0 \

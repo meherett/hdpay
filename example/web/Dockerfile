@@ -13,6 +13,8 @@ RUN npx ng build --configuration production
 
 # ---- serve
 FROM nginx:1.29-alpine
+# links the image to the repository on GitHub (ghcr.io)
+LABEL org.opencontainers.image.source="https://github.com/meherett/hdpay"
 # where /api/ goes; the default suits docker-compose.yml
 ENV EXAMPLE_API_URL=http://example-api:8400
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template

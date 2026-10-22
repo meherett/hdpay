@@ -25,14 +25,6 @@
   white-space: nowrap;
 }
 
-.brand small {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--hd-muted);
-  text-transform: uppercase;
-}
-
 /* the pages fill the middle, on one line; on a narrow screen only their icons, and it scrolls if it must */
 .nav {
   flex: 1;

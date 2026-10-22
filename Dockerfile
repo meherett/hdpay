@@ -26,6 +26,8 @@ RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 # ---- base: what the three share
 FROM python:3.14-slim AS base
+# links the images to the repository on GitHub (ghcr.io)
+LABEL org.opencontainers.image.source="https://github.com/meherett/hdpay"
 ENV PYTHONDONTWRITEBYTECODE=1     PYTHONUNBUFFERED=1     HDPAY_RELOAD=false
 COPY --from=build /wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels  && useradd --create-home --uid 10001 hdpay
