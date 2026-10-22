@@ -18,12 +18,14 @@ from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
 from api.chains import Chain, TxStatus
+from api.evm import web3_for
 from api.keys import funder_private_key, private_key_for_path
 from api.db import Deposit
 from .base import Sweeper
 
 log = logging.getLogger("hdpay.sweeper")
 GAS_MARGIN_PERCENT = 20
+PLAIN_TRANSFER_GAS = 21_000
 ERC20_ABI = [
     {"name": "balanceOf", "type": "function", "stateMutability": "view",
      "inputs": [{"name": "owner", "type": "address"}], "outputs": [{"name": "", "type": "uint256"}]},
@@ -35,7 +37,7 @@ ERC20_ABI = [
 class EvmSweeper(Sweeper):
     def __init__(self, chain: Chain):
         super().__init__(chain)
-        self.w3 = Web3(Web3.HTTPProvider(chain.rpc_url))
+        self.w3 = web3_for(chain)
         if self.w3.eth.chain_id != chain.chain_id:
             raise RuntimeError(f"RPC for {chain.key} reports chain id {self.w3.eth.chain_id}, expected {chain.chain_id}")
 
@@ -126,14 +128,16 @@ class EvmSweeper(Sweeper):
 
     def _top_up(self, d: Deposit, number: int, to: str, amount: int, fee_fields: dict, gas_price: int) -> None:
         funder = self._funder(number)
+        available = self.w3.eth.get_balance(funder.address)
+        # a node refuses to even estimate a transfer the sender cannot pay for: check first, against a
+        # plain transfer's 21000 gas, so an empty funder is reported plainly
+        if available < amount + PLAIN_TRANSFER_GAS * gas_price:
+            self.funder_short(d, funder.address, available, amount + PLAIN_TRANSFER_GAS * gas_price)
+            return
         gas = self._gas_for(funder.address, to, amount)
         needed = amount + gas * gas_price
-        available = self.w3.eth.get_balance(funder.address)
         if available < needed:
-            log.error(
-                "fee funder %s has %s, needs %s to sweep %s from %s — fund it",
-                funder.address, available, needed, d.asset, to,
-            )
+            self.funder_short(d, funder.address, available, needed)
             return
         d.fee_tx_hash = self._send(funder, {"to": to, "value": amount, "gas": gas, **fee_fields})
         log.info("topped up %s with %s wei for gas (top-up gas limit %s) in %s", to, amount, gas, d.fee_tx_hash)

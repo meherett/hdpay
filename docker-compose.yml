@@ -23,8 +23,6 @@
 name: hdpay
 
 x-service: &service
-  build: .
-  image: hdpay:latest
   restart: unless-stopped
   env_file: envs/common.env
   environment:
@@ -38,8 +36,15 @@ x-service: &service
       max-size: 10m
       max-file: "5"
 
+x-watcher: &watcher
+  <<: *service
+  build: { context: ., target: watcher }
+  image: hdpay-watcher:latest
+
 x-sweeper: &sweeper
   <<: *service
+  build: { context: ., target: sweeper }
+  image: hdpay-sweeper:latest
   env_file:
     - envs/common.env
     - path: envs/sweeper.env
@@ -48,7 +53,8 @@ x-sweeper: &sweeper
 services:
   api:
     <<: *service
-    command: ["python", "-m", "api"]
+    build: { context: ., target: api }
+    image: hdpay-api:latest
     ports:
       - "8090:8090"
     environment:
@@ -84,11 +90,11 @@ services:
         max-file: "5"
 
   watcher-sepolia:
-    <<: *service
+    <<: *watcher
     command: ["python", "-m", "watcher", "--chain", "sepolia"]
 
   watcher-tron-nile:
-    <<: *service
+    <<: *watcher
     command: ["python", "-m", "watcher", "--chain", "tron-nile"]
 
   sweeper-sepolia:

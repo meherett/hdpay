@@ -1,10 +1,14 @@
+import logging
 from abc import ABC, abstractmethod
+from decimal import Decimal
 from typing import Any
 
 from api.chains import Chain, TxStatus
 from api.config import settings
 from api.db import Deposit
 from api.keys import check_master_key
+
+log = logging.getLogger("hdpay.sweeper")
 
 
 class Sweeper(ABC):
@@ -16,6 +20,22 @@ class Sweeper(ABC):
         if not self.master_xprv:
             raise RuntimeError(f"HDPAY_MASTER_XPRV is required to sweep {chain.key}")
         check_master_key(self.master_xprv)
+
+    def coins(self, units: int) -> str:
+        """An amount of the chain's own coin, readable: 2106400000000 wei is '0.0000021064 BNB'."""
+        value = Decimal(units).scaleb(-self.chain.native_decimals)
+        text = f"{value:f}"
+        text = text.rstrip("0").rstrip(".") if "." in text else text
+        return f"{text} {self.chain.native_symbol}"
+
+    def funder_short(self, d: Deposit, funder: str, available: int, needed: int) -> None:
+        """The fee funder cannot pay for this deposit's sweep: say so plainly. The deposit waits and is
+        tried again on the next pass, so funding the address is all it takes."""
+        log.error(
+            "fee funder %s on %s has %s but needs %s to sweep %s from deposit %s: send %s to it",
+            funder, self.chain.name, self.coins(available), self.coins(needed), d.asset, d.id,
+            self.coins(needed - available),
+        )
 
     @abstractmethod
     def treasury(self, project: dict[str, Any]) -> str | None:

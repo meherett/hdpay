@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from web3 import Web3
 
 from .chains import Chain, Family
+from .evm import web3_for
 
 log = logging.getLogger("hdpay.balances")
 RPC_TIMEOUT_SECONDS = 8
@@ -16,7 +17,7 @@ _BALANCE_OF_ABI = [{
 
 
 def _web3(chain: Chain) -> Web3:
-    return Web3(Web3.HTTPProvider(chain.rpc_url, request_kwargs={"timeout": RPC_TIMEOUT_SECONDS}))
+    return web3_for(chain, RPC_TIMEOUT_SECONDS)
 
 
 def balance(chain: Chain, asset: str, address: str) -> int:

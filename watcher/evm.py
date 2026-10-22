@@ -11,6 +11,7 @@ from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
 from api.chains import Chain, TxStatus
+from api.evm import web3_for
 from .base import Payment, Scanner
 
 TRANSFER_TOPIC = Web3.to_hex(Web3.keccak(text="Transfer(address,address,uint256)"))
@@ -28,7 +29,7 @@ def _topic(address: str) -> str:
 class EvmScanner(Scanner):
     def __init__(self, chain: Chain):
         super().__init__(chain)
-        self.w3 = Web3(Web3.HTTPProvider(chain.rpc_url))
+        self.w3 = web3_for(chain)
         if self.w3.eth.chain_id != chain.chain_id:
             raise RuntimeError(f"RPC for {chain.key} reports chain id {self.w3.eth.chain_id}, expected {chain.chain_id}")
 

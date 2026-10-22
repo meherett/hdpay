@@ -130,8 +130,7 @@ class TronSweeper(Sweeper):
         # sending to a new account burns an extra ~1.1 TRX of the funder's balance to activate it
         needed = amount + 1_100_000 + TRX_SWEEP_RESERVE_SUN
         if available < needed:
-            log.error("fee funder %s has %s sun, needs %s to sweep %s from %s — fund it",
-                      funder, available, needed, d.asset, d.address)
+            self.funder_short(d, funder, available, needed)
             return
         txn = self.client.trx.transfer(funder, d.address, amount).build().sign(funder_key)
         d.fee_tx_hash = txn.broadcast().txid

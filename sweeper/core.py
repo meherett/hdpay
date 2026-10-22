@@ -32,6 +32,18 @@ log = logging.getLogger("hdpay.sweeper")
 SWEEP_INTERVAL_SECONDS = 30
 
 
+def describe(exc: Exception) -> str | None:
+    """What a node or the network said, for an error worth one line; None for a bug, which keeps its
+    traceback."""
+    response = getattr(exc, "rpc_response", None)
+    if isinstance(response, dict) and isinstance(response.get("error"), dict):
+        return response["error"].get("message") or str(exc)
+    module = type(exc).__module__
+    if module.startswith(("web3", "tronpy", "requests", "httpx", "urllib3")) or isinstance(exc, (ConnectionError, TimeoutError)):
+        return str(exc) or type(exc).__name__
+    return None
+
+
 def hold(d: Deposit, reason: str) -> None:
     d.sweep_hold = reason[:300]
     log.error("holding deposit %s (%s): %s. Not retrying; check it, then release it in the admin.", d.id, d.address, reason)
@@ -99,8 +111,12 @@ def sweep_once(db: Database, sweeper: Sweeper) -> None:
             continue
         try:
             advance(sweeper, d, project)
-        except Exception:
-            log.exception("sweeping deposit %s (%s) failed", d.id, d.address)
+        except Exception as exc:
+            reason = describe(exc)
+            if reason is None:
+                log.exception("sweeping deposit %s (%s) failed", d.id, d.address)
+            else:
+                log.error("sweeping deposit %s (%s) failed, trying again next pass: %s", d.id, d.address, reason)
         d.save(db)
         if d.status == Status.SWEPT:
             notify_status(db, d, project)
@@ -118,6 +134,10 @@ def run(sweeper: Sweeper, build=None) -> None:
             if build:
                 sweeper = follow(sweeper, build)
             sweep_once(db, sweeper)
-        except Exception:
-            log.exception("sweep loop failed")
+        except Exception as exc:
+            reason = describe(exc)
+            if reason is None:
+                log.exception("sweep loop failed")
+            else:
+                log.error("sweep pass on %s failed, trying again in %ss: %s", sweeper.chain.name, SWEEP_INTERVAL_SECONDS, reason)
         time.sleep(SWEEP_INTERVAL_SECONDS)

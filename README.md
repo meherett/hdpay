@@ -265,6 +265,7 @@ holds the master key. A variable set in the environment wins over the files.
 | `HDPAY_POLL_INTERVAL_SECONDS`    | `5`                         | Watcher loop interval                      |
 | `HDPAY_PORT`                     | `8090`                      | API port                                   |
 | `HDPAY_RELOAD`                   | `false`                     | Development: restart the API when `api/` code changes |
+| `HDPAY_CHAIN`                    |                             | The watcher's or sweeper's chain, instead of `--chain` (for their images) |
 | `HDPAY_FORWARDED_ALLOW_IPS`      | `127.0.0.1`                 | Proxies trusted to pass on the caller's IP (`X-Forwarded-For`), comma separated |
 | `HDPAY_CORS_ORIGINS`             | the admin dev server        | JSON list of browser origins allowed to call the API |
 | `HDPAY_CHAINS_FILE`              | `chains.yaml`               | Chains and tokens (see above)              |
@@ -290,7 +291,9 @@ Each part has its own Dockerfile:
 
 | Dockerfile | Image | Runs |
 |---|---|---|
-| `Dockerfile` | `hdpay` | the api, the watchers and the sweepers (one image; compose picks the command) |
+| `Dockerfile`, target `api` | `hdpay-api` | the api |
+| `Dockerfile`, target `watcher` | `hdpay-watcher` | a watcher, for the chain in `HDPAY_CHAIN` (or `--chain`) |
+| `Dockerfile`, target `sweeper` | `hdpay-sweeper` | a sweeper, for the chain in `HDPAY_CHAIN` (or `--chain`), with the master key |
 | `web/Dockerfile` | `hdpay-web` | the web app (the admin), served by nginx, which passes `/api/` on to the api |
 | `example/api/Dockerfile` | `hdpay-example-api` | the example shop's API; its SQLite database is in the `/data` volume |
 | `example/web/Dockerfile` | `hdpay-example-web` | the example checkout, served by nginx, which passes `/api/` on to the shop's API |
@@ -490,7 +493,7 @@ python -m source.users seed   # sample users 1001-1005, with their passwords (sh
 python -m source.users add you@example.com --name "Your Name"   # one more user, next account ID
 python -m source              # http://localhost:8400; python -m pytest for its tests
 
-cd example/web && npm ci && npm run web    # http://localhost:4400
+cd example/web && npm ci && npm run example    # http://localhost:4400
 ```
 
 Without `SMTP_HOST` the emails are written to the API's log instead of sent. The shop keeps its users,
