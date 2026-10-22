@@ -92,7 +92,7 @@ JavaScript number. Divide by `10^decimals` to show them:
 | `partial` | `partial` | Confirmed, but short. The rest can still come to the same address until `expires_at`. |
 | `confirmed` | `paid` | Paid in full (within the project's tolerance). **Credit the order now.** |
 | `swept` | `paid` | The funds reached the project's treasury. |
-| `needs_review` | `contact_support` | The rest never came. The address is closed; support decides. |
+| `review` | `contact_support` | The rest never came. The address is closed; support decides. |
 
 **Tolerance.** A payment counts as complete at `expected − expected × tolerance_bps ÷ 10000`. With the
 default 50 bps, a 100 USDT deposit is paid from 99.50 USDT up.
@@ -373,7 +373,7 @@ Every event carries the deposit **as it is right after the change**, in the same
 | `deposit.partial` | Confirmed, but short. The rest can come to the same address until `expires_at`. | `partial` / `partial` | Ask for the rest. |
 | `deposit.confirmed` | Paid in full, or credited by support. | `paid` / `confirmed` | **Credit the order.** Thank the customer. |
 | `deposit.expired` | The payment window ended with nothing received. | `expired` / `expired` | Tell the customer; they can start again. |
-| `deposit.review` | The rest of a short payment never came. | `contact_support` / `needs_review` | Ask the customer to contact support. |
+| `deposit.review` | The rest of a short payment never came. | `contact_support` / `review` | Ask the customer to contact support. |
 | `deposit.reopened` | Support gave a deposit in review more time for the rest. | `partial` / `partial` | Ask for the rest, by the new deadline. |
 | `deposit.discount_expired` | A deposit's discount ended before it was paid in full: the full price is due. | usually `partial` / `partial` | Ask for the full price less what came. |
 | `deposit.swept` | The funds reached the project's treasury. | `paid` / `swept` | Bookkeeping only. |
@@ -498,7 +498,7 @@ If the 40 arrives in time → `deposit.detected`, then `deposit.confirmed`, as a
 
 ```json
 { "type": "deposit.review",
-  "deposit": { "status": "contact_support", "internal_status": "needs_review",
+  "deposit": { "status": "contact_support", "internal_status": "review",
                "expected_amount": "100000000", "received_amount": "60000000" } }
 ```
 

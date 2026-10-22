@@ -137,7 +137,7 @@
           </td>
           <td class="date">{{ deposit.created_at | date: 'MMM d, y h:mm a' }}</td>
           <td class="actions">
-            @if (auth.isAdmin() && deposit.internal_status === 'needs_review' && deposit.expected_amount) {
+            @if (auth.isAdmin() && deposit.internal_status === 'review' && deposit.expected_amount) {
               <button nz-button nzType="text" class="reopen" nz-tooltip nzTooltipTitle="Reopen" aria-label="Reopen"
                       (click)="reopenTarget.set(deposit)">
                 <nz-icon nzType="redo" />

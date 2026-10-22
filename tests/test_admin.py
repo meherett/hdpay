@@ -91,7 +91,7 @@ def test_credit_only_from_review_or_partial_and_the_project_hears_of_it(client, 
     d = open_deposit(client, mongo, project)
     url = f"/admin/deposits/{d['id']}/credit"
     assert client.post(url, headers=admin).status_code == 409
-    set_fields(d["id"], status=Status.NEEDS_REVIEW, received_amount="4000000")
+    set_fields(d["id"], status=Status.REVIEW, received_amount="4000000")
     reply = client.post(url, headers=admin)
     assert reply.status_code == 200 and (reply.json()["status"], reply.json()["internal_status"]) == ("paid", "confirmed")
     assert [e["type"] for e in mongo.events.find().sort("seq", 1)] == ["deposit.created", "deposit.confirmed"]
@@ -101,7 +101,7 @@ def test_reopen_gives_a_fresh_window_with_supports_terms(client, admin, mongo, p
     d = open_deposit(client, mongo, project, expected_amount=10_000_000)
     url = f"/admin/deposits/{d['id']}/reopen"
     assert client.post(url, headers=admin).status_code == 409             # pending: nothing to reopen
-    set_fields(d["id"], status=Status.NEEDS_REVIEW, received_amount="4000000", expires_at=utcnow() - timedelta(hours=1))
+    set_fields(d["id"], status=Status.REVIEW, received_amount="4000000", expires_at=utcnow() - timedelta(hours=1))
     assert client.post(url, headers=admin, json={"remaining_amount": "0"}).status_code == 422
     assert client.post(url, headers=admin, json={"product": "gold"}).status_code == 422
     reply = client.post(url, headers=admin, json={"remaining_amount": "5000000", "minutes": 120, "product": "10k"}).json()
@@ -115,7 +115,7 @@ def test_reopen_gives_a_fresh_window_with_supports_terms(client, admin, mongo, p
 def test_reopen_defaults_to_the_projects_window(client, admin, mongo, project):
     mongo.projects.update_one({"_id": project["_id"]}, {"$set": {"remainder_window_minutes": 30}})
     d = open_deposit(client, mongo, project, expected_amount=10_000_000)
-    set_fields(d["id"], status=Status.NEEDS_REVIEW, received_amount="4000000")
+    set_fields(d["id"], status=Status.REVIEW, received_amount="4000000")
     reply = client.post(f"/admin/deposits/{d['id']}/reopen", headers=admin).json()
     assert 29 * 60 < reply["expires_in_seconds"] <= 30 * 60 and reply["expected_amount"] == "10000000"
 

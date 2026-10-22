@@ -11,7 +11,7 @@ back only the newest payment (to the deposit's `confirmed_amount`).
 
 **Changed from decision 3 below:** the remainder window is `HDPAY_REMAINDER_WINDOW_MINUTES` (a day by
 default), counted once from the first short payment, not restarted by each payment. When it ends
-the deposit goes to `needs_review` and its address is **no longer watched**: the page tells the
+the deposit goes to `review` and its address is **no longer watched**: the page tells the
 customer the address has expired and to contact support, who resolve it with the credit action.
 
 Not built yet: the payments table, the overpaid tag.
@@ -20,7 +20,7 @@ Not built yet: the payments table, the overpaid tag.
 
 A deposit asks for an exact amount, but customers do not always send it. An exchange withdrawal fee
 or a typo turns 5 USDC into 4.5. Today such a deposit waits for its confirmations, goes to
-`needs_review`, and its address stops being watched, so if the customer sends the missing 0.5 it
+`review`, and its address stops being watched, so if the customer sends the missing 0.5 it
 is never added.
 
 ## Decisions
@@ -32,7 +32,7 @@ A new status, `partial`, between `detected` and `confirmed`:
 ```
 pending ─▶ detected ─▶ partial ─▶ (rest arrives) ─▶ confirmed ─▶ swept
                           │
-                          └─▶ window ends unpaid ─▶ needs_review (still watched)
+                          └─▶ window ends unpaid ─▶ review (still watched)
 ```
 
 - As soon as a short payment is **seen**, the deposit page tells the customer how much is still
@@ -52,7 +52,7 @@ customer who is already paying.
 
 ### 3. Rest never comes: credit what arrived, decided by support
 
-When the window ends without the rest, the deposit goes to `needs_review`. Its address stays
+When the window ends without the rest, the deposit goes to `review`. Its address stays
 watched, so a late remainder still completes it automatically. In the admin, the first action is
 **Credit the received amount** (for example 4.5 USDC) to the account.
 
@@ -80,7 +80,7 @@ sum of its confirmed payments. The admin deposit page lists every payment with i
 
 ## Other changes that come with it
 
-- Status machine: `partial` is watched like `pending`, `expired` and `detected`; `needs_review` also
+- Status machine: `partial` is watched like `pending`, `expired` and `detected`; `review` also
   becomes watched, so a late remainder completes it.
 - Sweeper: leaves `partial` deposits alone until they are paid, so one deposit never pays gas twice.
 - Admin: `partial` and `overpaid` in the overview counts and filters; credit-received action.
@@ -89,5 +89,5 @@ sum of its confirmed payments. The admin deposit page lists every payment with i
 
 ## Not decided here
 
-- Whether support can also mark a `needs_review` deposit as refunded by hand (for a refund made
+- Whether support can also mark a `review` deposit as refunded by hand (for a refund made
   outside HDPay).

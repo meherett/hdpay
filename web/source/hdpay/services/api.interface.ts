@@ -1,4 +1,4 @@
-export type InternalStatus = 'pending' | 'expired' | 'detected' | 'partial' | 'confirmed' | 'needs_review' | 'swept';
+export type InternalStatus = 'pending' | 'expired' | 'detected' | 'partial' | 'confirmed' | 'review' | 'swept';
 
 /**
  * The discount a deposit was opened with, given by the project for that customer: active while it

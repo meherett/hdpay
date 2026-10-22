@@ -20,7 +20,7 @@ PUBLIC_STATUS = {
     Status.PARTIAL: "partial",
     Status.CONFIRMED: "paid",
     Status.SWEPT: "paid",
-    Status.NEEDS_REVIEW: "contact_support",
+    Status.REVIEW: "contact_support",
 }
 
 

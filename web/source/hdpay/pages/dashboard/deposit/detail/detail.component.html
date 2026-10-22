@@ -42,7 +42,7 @@
 }
 
 @if (deposit(); as d) {
-  @if (d.internal_status === 'needs_review') {
+  @if (d.internal_status === 'review') {
     <nz-alert
       class="block"
       nzType="warning"

@@ -7,7 +7,7 @@ export const STATUS: Record<InternalStatus, { color: string; label: string; hint
   detected: { color: 'orange', label: 'detected', hint: 'Payment seen, waiting for confirmations' },
   partial: { color: 'gold', label: 'partial', hint: 'Underpaid. The rest can still arrive until the window ends' },
   confirmed: { color: 'green', label: 'confirmed', hint: 'Credited, waiting to be swept' },
-  needs_review: { color: 'red', label: 'review', hint: 'The rest never came. Not watched; the customer contacts support' },
+  review: { color: 'red', label: 'review', hint: 'The rest never came. Not watched; the customer contacts support' },
   swept: { color: 'cyan', label: 'swept', hint: "Funds moved to the project's treasury" }
 };
 

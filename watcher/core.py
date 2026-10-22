@@ -9,7 +9,7 @@ Chain-independent watcher loop. Per loop:
 
 An underpaid deposit becomes partial and stays watched for its project's remainder window: if the
 rest arrives, the new total is checked after its confirmations and, once it is enough, the deposit is
-credited and swept. If the window ends first, it goes to needs_review and is no longer watched; the
+credited and swept. If the window ends first, it goes to review and is no longer watched; the
 customer contacts support.
 
 A deposit opened during a product discount (api.discounts) expects the discounted price. Payments
@@ -79,8 +79,8 @@ def expire(watched: dict[str, Deposit]) -> None:
             d.status = Status.EXPIRED
         elif d.status == Status.PARTIAL and d.expires_at < now:
             # the rest did not come in time: the address closes and support takes it from here
-            d.status = Status.NEEDS_REVIEW
-            log.info("deposit %s -> needs_review: the rest of %s did not arrive in time", d.id, d.received_amount)
+            d.status = Status.REVIEW
+            log.info("deposit %s -> review: the rest of %s did not arrive in time", d.id, d.received_amount)
 
 
 def lapse(watched: dict[str, Deposit], scanned_to: datetime, projects: Projects) -> list[Deposit]:

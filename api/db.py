@@ -69,6 +69,14 @@ def create_indexes(db: Database | None = None) -> None:
     db.deposits.create_index("created_at")
     db.events.create_index([("project_id", ASCENDING), ("seq", ASCENDING)], unique=True)
     db.events.create_index("created_at", expireAfterSeconds=settings.event_retention_days * 86_400)
+    upgrade(db)
+
+
+def upgrade(db: Database) -> None:
+    """Stored values an older version wrote, renamed since. Idempotent, like the indexes."""
+    # the status "needs_review" is now "review", in the deposits and in the events' copies of them
+    db.deposits.update_many({"status": "needs_review"}, {"$set": {"status": Status.REVIEW.value}})
+    db.events.update_many({"deposit.internal_status": "needs_review"}, {"$set": {"deposit.internal_status": Status.REVIEW.value}})
 
 
 # ---- counters: address indexes, event sequences, watcher cursors and heartbeats
@@ -98,7 +106,7 @@ class Status(str, enum.Enum):
     DETECTED = "detected"          # payment seen, waiting for confirmations
     PARTIAL = "partial"            # underpaid and confirmed; the rest may still arrive until expires_at
     CONFIRMED = "confirmed"        # credited to the account
-    NEEDS_REVIEW = "needs_review"  # the rest never came: not watched any more, support decides
+    REVIEW = "review"              # the rest never came: not watched any more, support decides
     SWEPT = "swept"                # funds moved to the project's treasury
 
 

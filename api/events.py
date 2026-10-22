@@ -30,7 +30,7 @@ EVENT_FOR_STATUS = {
     Status.DETECTED: "deposit.detected",
     Status.PARTIAL: "deposit.partial",
     Status.CONFIRMED: "deposit.confirmed",
-    Status.NEEDS_REVIEW: "deposit.review",
+    Status.REVIEW: "deposit.review",
     Status.EXPIRED: "deposit.expired",
     Status.SWEPT: "deposit.swept",
 }

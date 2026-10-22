@@ -119,7 +119,7 @@ pending -> expired -> detected -> confirmed -> swept
                           ^   \
                           |    -> partial  (underpaid: the rest may come until the window ends)
                           |          |  \
-                          +----------+   -> needs_review  (window ended: closed, customer contacts support)
+                          +----------+   -> review  (window ended: closed, customer contacts support)
                         the rest arrives
 ```
 
@@ -131,13 +131,13 @@ pending -> expired -> detected -> confirmed -> swept
 | `partial`      | Underpaid; **watched** until the remainder window ends     | `partial`           | `deposit.partial`  |
 | `confirmed`    | Paid: credit the account                                   | `paid`              | `deposit.confirmed`|
 | `swept`        | Funds moved to the project's treasury                      | `paid`              | `deposit.swept`    |
-| `needs_review` | The rest never came — **not watched**; support decides     | `contact_support`   | `deposit.review`   |
+| `review` | The rest never came — **not watched**; support decides     | `contact_support`   | `deposit.review`   |
 
 - A late payment of the right amount to an expired address is credited automatically (`late = true`).
 - An underpayment becomes `partial`: the same address waits for the rest for the project's remainder
   window, counted from the short payment. If the rest arrives in time the deposit is credited and swept.
   A reorg of that later payment rolls back only that payment, never the part already confirmed.
-- If the window ends first, the deposit goes to `needs_review` and its address is **no longer watched**.
+- If the window ends first, the deposit goes to `review` and its address is **no longer watched**.
   Support either **reopens** it (back to `partial` with a fresh window and, if agreed, a different amount
   or product; the project gets `deposit.reopened`) or **credits** it as it is. A `partial` deposit also
   gets a balance check about once a minute, tokens included, so anything sent while the address was

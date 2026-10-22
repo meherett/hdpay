@@ -136,11 +136,11 @@ def test_when_the_window_ends_the_address_closes_for_support(chain):
     advance(chain, CONFIRMATIONS)
     close_window(d)
     tick(chain)
-    assert get(d).status == Status.NEEDS_REVIEW
+    assert get(d).status == Status.REVIEW
     # no longer watched: a payment after the window is not counted
     chain.pay("TDeposit0", "USDT", 6_000_000, "tx2", block=chain.head + 1)
     advance(chain, CONFIRMATIONS + 1)
-    assert (get(d).status, get(d).received_amount) == (Status.NEEDS_REVIEW, "4000000")
+    assert (get(d).status, get(d).received_amount) == (Status.REVIEW, "4000000")
 
 
 def test_a_reorged_remainder_keeps_the_confirmed_first_payment(chain):
@@ -171,7 +171,7 @@ def test_a_reopened_token_deposit_counts_what_was_sent_while_it_was_closed(chain
     advance(chain, CONFIRMATIONS)
     close_window(d)
     tick(chain)
-    assert get(d).status == Status.NEEDS_REVIEW
+    assert get(d).status == Status.REVIEW
     # the rest is sent while the address is closed: the scan never sees it
     chain.pay("TDeposit0", "USDT", 6_000_000, "tx2", block=chain.head + 1)
     advance(chain, 2)
@@ -288,7 +288,7 @@ def test_every_status_change_is_an_event_for_the_project(chain):
     tick(chain)
     assert event_types() == ["deposit.detected", "deposit.partial", "deposit.review"]
     last = get_db().events.find_one({"seq": 3})
-    assert last["deposit"]["internal_status"] == "needs_review" and last["deposit"]["received_amount"] == "4000000"
+    assert last["deposit"]["internal_status"] == "review" and last["deposit"]["received_amount"] == "4000000"
 
 
 def test_the_projects_own_tolerance_counts(chain, project):
@@ -297,3 +297,14 @@ def test_the_projects_own_tolerance_counts(chain, project):
     chain.pay("TDeposit0", "USDT", 9_000_000, "tx1", block=chain.head + 1)
     advance(chain, CONFIRMATIONS + 1)
     assert get(d).status == Status.CONFIRMED
+
+
+def test_an_older_review_status_is_upgraded_on_start(mongo):
+    from api.db import create_indexes
+
+    mongo.deposits.insert_one({"_id": "old", "address": "0xold", "status": "needs_review"})
+    mongo.events.insert_one({"_id": "evt", "project_id": "p", "seq": 1, "deposit": {"internal_status": "needs_review"}})
+    create_indexes(mongo)
+    create_indexes(mongo)   # idempotent
+    assert mongo.deposits.find_one({"_id": "old"})["status"] == "review"
+    assert mongo.events.find_one({"_id": "evt"})["deposit"]["internal_status"] == "review"

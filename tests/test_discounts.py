@@ -220,7 +220,7 @@ def in_review(client, mongo, ended=True):
     d = open_deposit(client, mongo, project)
     ends_at = utcnow() - timedelta(hours=1) if ended else utcnow() + timedelta(hours=1)
     get_db().deposits.update_one({"_id": d["id"]}, {"$set": {
-        "status": Status.NEEDS_REVIEW.value, "received_amount": "50000000", "discount.ends_at": ends_at,
+        "status": Status.REVIEW.value, "received_amount": "50000000", "discount.ends_at": ends_at,
     }})
     return f"/admin/deposits/{d['id']}/reopen"
 
@@ -259,7 +259,7 @@ def test_reopening_with_another_product_asks_for_its_price(client, mongo, admin)
     products = PRICED + [{"value": "50k", "name": "$50,000", "subname": None, "price": "60"}]
     project = make_project(mongo, products=products)
     d = open_deposit(client, mongo, project)      # 100k at 20% off: 80
-    get_db().deposits.update_one({"_id": d["id"]}, {"$set": {"status": Status.NEEDS_REVIEW.value, "received_amount": "10000000"}})
+    get_db().deposits.update_one({"_id": d["id"]}, {"$set": {"status": Status.REVIEW.value, "received_amount": "10000000"}})
     reply = client.post(f"/admin/deposits/{d['id']}/reopen", headers=admin, json={"product": "50k"}).json()
     # 60 at the same 20% off is 48, while the discount runs
     assert (reply["product"], reply["expected_amount"]) == ("50k", "48000000")

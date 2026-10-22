@@ -601,8 +601,8 @@ def get_deposit(deposit_id: str, user: CurrentUser, db: DB):
 def credit_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB):
     """Support action: credit an underpaid deposit as it is, after a person checked it."""
     deposit = _deposit_or_404(db, deposit_id, admin)
-    if deposit.status not in (Status.NEEDS_REVIEW, Status.PARTIAL):
-        raise HTTPException(409, f"deposit is {deposit.status.value}, not needs_review or partial")
+    if deposit.status not in (Status.REVIEW, Status.PARTIAL):
+        raise HTTPException(409, f"deposit is {deposit.status.value}, not review or partial")
     deposit.status = Status.CONFIRMED
     deposit.confirmed_at = utcnow()
     deposit.save(db)
@@ -628,8 +628,8 @@ def reopen_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB, body: Reo
     body = body or ReopenDeposit()
     deposit = _deposit_or_404(db, deposit_id, admin)
     project = get_project(db, deposit.project_id)
-    if deposit.status != Status.NEEDS_REVIEW:
-        raise HTTPException(409, f"deposit is {deposit.status.value}, not needs_review")
+    if deposit.status != Status.REVIEW:
+        raise HTTPException(409, f"deposit is {deposit.status.value}, not review")
     if not deposit.expected_amount:
         raise HTTPException(409, "deposit accepts any amount, so there is no rest to wait for")
     if body.product is not None:
