@@ -12,6 +12,10 @@ dist/
 !.env.example
 envs/*.env
 
+# the VM's origin certificates and private keys: copied to the server by hand, never committed
+vm/ssl/
+vm/.env
+
 # Local databases
 *.db
 *.db-journal

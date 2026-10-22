@@ -298,14 +298,15 @@ Each part has its own Dockerfile:
 | `example/api/Dockerfile` | `ghcr.io/meherett/hdpay-example-api` | the example shop's API; its SQLite database is in the `/data` volume |
 | `example/web/Dockerfile` | `ghcr.io/meherett/hdpay-example-web` | the example checkout, served by nginx, which passes `/api/` on to the shop's API |
 
-`docker-compose.yml` starts the api, the web app (http://localhost:4500), one watcher and one sweeper per
-chain (Sepolia and Tron Nile to begin with; copy a pair to add a chain), and optionally MongoDB and the
-example shop. The web apps reach their API through their own `/api/`, so no CORS is needed.
+`vm/docker-compose.yaml` (the server's files live in `vm/`, as in qnode) starts the api, the web app
+(http://localhost:4500), one watcher and one sweeper per chain in `chains.yaml`, and optionally MongoDB and the
+example shop. Run `docker compose` from `vm/`, or from the root with `-f vm/docker-compose.yaml`. The web apps reach their API through their own `/api/`, so no CORS is needed.
 
 The images are published, private, on GitHub's registry. After `docker login ghcr.io` (a classic token with
 `read:packages` to pull, `write:packages` to push), a server pulls them instead of building:
 
 ```bash
+cd vm
 docker compose --profile example pull && docker compose --profile example up -d   # a server
 docker compose --profile example build && docker compose --profile example push   # publish new ones
 ```
@@ -314,6 +315,7 @@ docker compose --profile example build && docker compose --profile example push 
 cp envs/common.env.example envs/common.env     # HDPAY_MONGODB_URI (Atlas for now), HDPAY_JWT_SECRET, ...
 python -m api.keys master --save              # envs/sweeper.env: the sweepers get it, the api never does
 cp chains.example.yaml chains.yaml   # mounted read-only; edits apply without a rebuild
+cd vm
 docker compose up -d --build
 docker compose ps
 docker compose logs -f watcher-tron-nile
@@ -323,6 +325,7 @@ docker compose logs -f watcher-tron-nile
 throwaway container:
 
 ```bash
+cd vm
 docker compose run --rm api python -m api.manage create-admin --email you@example.com --name "Your Name"
 docker compose run --rm sweeper-tron-nile python -m api.keys project <number>    # needs the master key
 ```
@@ -330,10 +333,43 @@ docker compose run --rm sweeper-tron-nile python -m api.keys project <number>   
 To run MongoDB in Docker instead of Atlas, set `HDPAY_MONGODB_URI=mongodb://mongo:27017` in `envs/common.env` and
 start with `docker compose --profile mongo up -d`; its data lives in the `mongo-data` volume.
 
+### On the VM: hdpay.systems
+
+As in qnode, nginx runs on the VM itself and sends each domain to a container's port; the ports listen on
+`127.0.0.1` only, so everything goes through nginx (and HTTPS). Cloudflare sits in front, with one origin
+certificate for `hdpay.systems` and `*.hdpay.systems`.
+
+| Address | Service |
+|---|---|
+| `hdpay.systems` | hdpay-web |
+| `hdpay.systems/api/...` and `api.hdpay.systems` | hdpay-api (the `/api` prefix is dropped) |
+| `example.hdpay.systems` | hdpay-example-web |
+| `example.hdpay.systems/api/...` | hdpay-example-api |
+
+```bash
+git clone https://github.com/meherett/hdpay.git && cd hdpay
+cp envs/common.env.example envs/common.env       # and envs/sweeper.env, envs/example.env, chains.yaml
+cp vm/.env.example vm/.env                       # EXAMPLE_WEB_URL=https://example.hdpay.systems
+# the Cloudflare origin certificate and key (never committed):
+sudo mkdir -p /etc/ssl/certs/hdpay-systems /etc/ssl/private/hdpay-systems
+sudo cp origin.crt /etc/ssl/certs/hdpay-systems/origin.crt
+sudo cp private.key /etc/ssl/private/hdpay-systems/private.key && sudo chmod 600 /etc/ssl/private/hdpay-systems/private.key
+sudo cp vm/nginx/sites-available/hdpay-systems.conf /etc/nginx/sites-available/
+sudo ln -s /etc/nginx/sites-available/hdpay-systems.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+cd vm && docker login ghcr.io && docker compose --profile example pull && docker compose --profile example up -d
+```
+
+nginx trusts `CF-Connecting-IP` from Cloudflare's addresses only and passes the visitor's IP on; the api
+believes it from nginx (and the web app's nginx) only, so API-key allowed IPs and the sign-in limit see the
+real visitor. Never publish the ports beyond `127.0.0.1`: anyone who reached the api directly could claim
+any IP.
+
 The example shop (its API on 8400, its checkout on http://localhost:4400):
 
 ```bash
 cp envs/example.env.example envs/example.env   # HDPAY_SECRET_KEY of the project it sells for, SMTP_...
+cd vm
 docker compose --profile example up -d --build
 docker compose run --rm example-api python -m source.users seed
 ```
@@ -536,6 +572,7 @@ example/            a sample shop on HDPay
   api/              its backend (FastAPI): holds the secret key, opens deposits, emails customers
   web/              its checkout (Angular), which talks only to example/api
 tests/              pytest suite (in-memory MongoDB, stub chains, no network)
+vm/                 the server: docker-compose.yaml, which runs the published images
 ```
 
 Amounts are stored as strings (they overflow 64-bit integers). Timestamps are naive UTC.
