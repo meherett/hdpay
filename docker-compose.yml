@@ -18,7 +18,8 @@
 # only, never the api).
 # chains.yaml is mounted read-only, so edits apply without a rebuild or restart.
 #
-# To accept another chain, copy a watcher and a sweeper below and change the chain key.
+# Every chain in chains.yaml has a watcher and a sweeper below; for a new chain, copy a pair and change
+# the chain key.
 
 name: hdpay
 
@@ -89,17 +90,50 @@ services:
         max-size: 10m
         max-file: "5"
 
+  # One watcher and one sweeper per chain in chains.yaml
+  watcher-ethereum:
+    <<: *watcher
+    command: ["python", "-m", "watcher", "--chain", "ethereum"]
+
   watcher-sepolia:
     <<: *watcher
     command: ["python", "-m", "watcher", "--chain", "sepolia"]
+
+  watcher-bsc:
+    <<: *watcher
+    command: ["python", "-m", "watcher", "--chain", "bsc"]
+
+  watcher-bsc-testnet:
+    <<: *watcher
+    command: ["python", "-m", "watcher", "--chain", "bsc-testnet"]
+
+  watcher-tron:
+    <<: *watcher
+    command: ["python", "-m", "watcher", "--chain", "tron"]
 
   watcher-tron-nile:
     <<: *watcher
     command: ["python", "-m", "watcher", "--chain", "tron-nile"]
 
+  sweeper-ethereum:
+    <<: *sweeper
+    command: ["python", "-m", "sweeper", "--chain", "ethereum"]
+
   sweeper-sepolia:
     <<: *sweeper
     command: ["python", "-m", "sweeper", "--chain", "sepolia"]
+
+  sweeper-bsc:
+    <<: *sweeper
+    command: ["python", "-m", "sweeper", "--chain", "bsc"]
+
+  sweeper-bsc-testnet:
+    <<: *sweeper
+    command: ["python", "-m", "sweeper", "--chain", "bsc-testnet"]
+
+  sweeper-tron:
+    <<: *sweeper
+    command: ["python", "-m", "sweeper", "--chain", "tron"]
 
   sweeper-tron-nile:
     <<: *sweeper
