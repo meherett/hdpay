@@ -4,7 +4,7 @@ import pytest
 
 from factories import make_project
 from api.chains import TxStatus
-from api.db import Deposit, Status, find_deposit, get_counter, get_db, utcnow
+from api.db import Deposit, Status, find_deposit, get_counter, get_db, set_counter, utcnow
 from watcher import core
 from stubs import StubScanner
 
@@ -184,11 +184,23 @@ def test_a_reopened_token_deposit_counts_what_was_sent_while_it_was_closed(chain
     assert get(d).status == Status.CONFIRMED
 
 
-def test_pending_token_deposits_rely_on_the_scan_not_the_balance(chain):
+def test_a_token_payment_the_scan_never_saw_is_found_in_the_balance(chain):
+    # sent before the deposit was opened, or before the watcher's first run: no scan will see it
     d = make_deposit(expected=10_000_000)
     chain.balances[("TDeposit0", "USDT")] = 10_000_000
     tick(chain, loops=core.BALANCE_CHECK_EVERY_LOOPS)
-    assert (get(d).status, get(d).received_amount) == (Status.PENDING, "0")
+    assert (get(d).status, get(d).received_amount) == (Status.DETECTED, "10000000")
+    advance(chain, CONFIRMATIONS)
+    assert (get(d).status, get(d).received_amount) == (Status.CONFIRMED, "10000000")
+
+
+def test_a_token_payment_the_scan_saw_is_not_counted_again_from_the_balance(chain):
+    d = make_deposit(expected=10_000_000)
+    chain.pay("TDeposit0", "USDT", 10_000_000, "tx1", block=chain.head + 1)
+    chain.balances[("TDeposit0", "USDT")] = 10_000_000
+    advance(chain, CONFIRMATIONS)
+    tick(chain, loops=core.BALANCE_CHECK_EVERY_LOOPS)
+    assert (get(d).status, get(d).received_amount) == (Status.CONFIRMED, "10000000")
 
 
 def test_any_amount_deposit(chain):
@@ -308,3 +320,41 @@ def test_an_older_review_status_is_upgraded_on_start(mongo):
     create_indexes(mongo)   # idempotent
     assert mongo.deposits.find_one({"_id": "old"})["status"] == "review"
     assert mongo.events.find_one({"_id": "evt"})["deposit"]["internal_status"] == "review"
+
+
+def _three_second_blocks(scanner, last, count):
+    """Block times ending at `last` = now, one every 3 seconds, like Tron."""
+    now = utcnow()
+    for i in range(count):
+        scanner.times[last - i] = now - timedelta(seconds=3 * i)
+
+
+def test_far_behind_skips_blocks_from_before_the_oldest_deposit(chain):
+    set_counter(get_db(), "last_block:tron-nile", 1_000)
+    chain.head = 1_000 + 10_000                       # 10,000 blocks behind: about 8 hours of Tron
+    _three_second_blocks(chain, chain.head, 10_001)
+    d = make_deposit()                                # opened now
+    pay_at = chain.head - 5
+    chain.pay("TDeposit0", "USDT", 10_000_000, "tx1", block=pay_at)
+    tick(chain)
+    start, _ = chain.scanned[-1]
+    # 10 minutes before the deposit is 200 blocks back; nothing older is read
+    assert chain.head - 210 <= start <= chain.head - 195
+    for _ in range(5):
+        tick(chain)
+    assert get(d).status == Status.DETECTED and get(d).received_amount == "10000000"
+
+
+def test_far_behind_with_nothing_to_watch_skips_to_the_head(chain):
+    set_counter(get_db(), "last_block:tron-nile", 1_000)
+    chain.head = 50_000
+    assert core.run_once(get_db(), chain, 1) is True
+    assert get_counter(get_db(), "last_block:tron-nile") == chain.head
+
+
+def test_far_behind_without_block_times_reads_every_block(chain):
+    set_counter(get_db(), "last_block:tron-nile", 1_000)
+    chain.head = 5_000                                # no times known: nothing is skipped
+    make_deposit()
+    assert core.run_once(get_db(), chain, 1) is False   # still behind, so no pause before the next pass
+    assert chain.scanned[-1] == (1_001, 1_000 + core.MAX_BLOCKS_PER_LOOP)

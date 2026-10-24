@@ -39,6 +39,8 @@ from .base import Scanner
 log = logging.getLogger("hdpay.watcher")
 WATCHED = (Status.PENDING, Status.EXPIRED, Status.DETECTED, Status.PARTIAL)
 MAX_BLOCKS_PER_LOOP = 50
+# a payment is looked for from a little before its deposit was opened (clocks and block times drift)
+SKIP_MARGIN = timedelta(minutes=10)
 BALANCE_CHECK_EVERY_LOOPS = 12
 
 Projects = dict[str, dict[str, Any]]
@@ -114,16 +116,15 @@ def settles(d: Deposit, at: datetime) -> bool:
 def balance_fallback(scanner: Scanner, block: int, watched: dict[str, Deposit]) -> None:
     """Count what the address holds beyond what was recorded, for payments the scan cannot see.
 
-    Native coins: internal transfers made by contracts. Partial deposits, tokens too: a reopened
-    deposit's address was not watched while it was in review, so anything sent then is only
-    visible in its balance. Nothing is swept before a deposit is confirmed, so the balance is
-    everything it received.
+    Native coins: internal transfers made by contracts. Every asset: a payment in a block that was
+    scanned while nobody was waiting for it. That is one sent before its deposit was opened, one
+    from before a watcher's first run (it starts from the newest block), one from while it was
+    stopped beyond what it catches up, and one sent to a reopened deposit while it was in review.
+    Nothing is swept before a deposit is confirmed, so the balance is everything it received.
     """
     for address, d in watched.items():
         if d.status not in (Status.PENDING, Status.EXPIRED, Status.PARTIAL):
             continue
-        if not scanner.chain.is_native(d.asset) and d.status != Status.PARTIAL:
-            continue   # token transfers always emit a Transfer log, which the scan sees
         balance = scanner.balance_at(address, d.asset, block)
         seen = int(d.received_amount)
         if balance is not None and balance > seen:
@@ -170,7 +171,39 @@ def confirm(scanner: Scanner, latest: int, watched: dict[str, Deposit], projects
         log.info("deposit %s -> %s (late=%s)", d.id, d.status.value, d.late)
 
 
-def run_once(db: Database, scanner: Scanner, loops: int) -> None:
+def skip_ahead(scanner: Scanner, cursor: int, latest: int, deposits: list[Deposit]) -> int:
+    """Far behind (the watcher was stopped, or its database has an old cursor): blocks from before the
+    oldest watched deposit was opened cannot pay any of them, so they are skipped instead of read one
+    by one. The first block to read is found by its time; with no deposits to watch, the head."""
+    if latest - cursor <= MAX_BLOCKS_PER_LOOP:
+        return cursor
+    if not deposits:
+        log.info("nothing to watch on %s: skipping to the head, block %d", scanner.chain.key, latest)
+        return latest - 1
+    oldest = min(d.created_at for d in deposits) - SKIP_MARGIN
+    first = cursor + 1
+    first_time = scanner.block_time(first)
+    if first_time is None or first_time >= oldest:
+        return cursor
+    lo, hi = first, latest   # lo is before `oldest`; the first block at or after it is in (lo, hi]
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        mid_time = scanner.block_time(mid)
+        if mid_time is None:
+            return cursor   # the chain cannot say: read every block rather than risk a miss
+        if mid_time < oldest:
+            lo = mid
+        else:
+            hi = mid
+    log.info(
+        "skipping %s blocks %d to %d: before the oldest watched deposit was opened (%s)",
+        scanner.chain.key, first, lo, oldest + SKIP_MARGIN,
+    )
+    return lo
+
+
+def run_once(db: Database, scanner: Scanner, loops: int) -> bool:
+    """One pass; True once the watcher has caught up with the chain."""
     chain = scanner.chain
     cursor_key = f"last_block:{chain.key}"
     cursor = get_counter(db, cursor_key) or 0
@@ -182,6 +215,7 @@ def run_once(db: Database, scanner: Scanner, loops: int) -> None:
     found = find_deposits(db, {"chain": chain.key, "status": {"$in": [s.value for s in WATCHED]}})
     watched = {scanner.normalize(d.address): d for d in found}
     before = {d.id: d.status for d in found}
+    cursor = skip_ahead(scanner, cursor, latest, found)
 
     end = min(latest, cursor + MAX_BLOCKS_PER_LOOP)
     times: dict[int, datetime] = {}
@@ -229,6 +263,7 @@ def run_once(db: Database, scanner: Scanner, loops: int) -> None:
     for d in watched.values():
         if d.status != before[d.id]:
             notify_status(db, d, projects.get(d.project_id))
+    return end >= latest
 
 
 def run(scanner: Scanner, build=None) -> None:
@@ -241,8 +276,10 @@ def run(scanner: Scanner, build=None) -> None:
         try:
             if build:
                 scanner = follow(scanner, build)
-            run_once(db, scanner, loops)
+            caught_up = run_once(db, scanner, loops)
         except Exception:
             log.exception("watcher loop failed")
+            caught_up = True   # wait before trying again
         loops += 1
-        time.sleep(settings.poll_interval_seconds)
+        if caught_up:
+            time.sleep(settings.poll_interval_seconds)   # behind: straight on to the next blocks

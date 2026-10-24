@@ -7,6 +7,7 @@ TRX sent by contracts (internal transfers) is not seen by the scan. Partial depo
 balance check, which catches those and anything sent while the address was not watched.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from tronpy.exceptions import AddressNotFound, TransactionNotFound
@@ -16,6 +17,8 @@ from api.chains import Chain, TxStatus
 from api.tron import make_client
 from .base import Payment, Scanner
 
+# blocks fetched at once: each is one or two requests, and a watcher catching up reads many
+SCAN_WORKERS = 8
 TRANSFER_TOPIC = "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 
@@ -49,12 +52,19 @@ class TronScanner(Scanner):
             _log_address(to_hex_address(t.contract)): t for symbol, t in self.chain.tokens.items() if symbol in assets
         }
         native = self.chain.native_symbol in assets
-        payments = []
-        for n in range(start, end + 1):
+
+        def one(n: int) -> list[Payment]:
+            found = []
             if native:
-                payments += self._scan_native(n, watched)
+                found += self._scan_native(n, watched)
             if tokens:
-                payments += self._scan_tokens(n, watched, tokens)
+                found += self._scan_tokens(n, watched, tokens)
+            return found
+
+        payments = []
+        with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as pool:
+            for found in pool.map(one, range(start, end + 1)):   # in block order
+                payments += found
         return payments
 
     def _scan_native(self, n: int, watched: set[str]) -> list[Payment]:
