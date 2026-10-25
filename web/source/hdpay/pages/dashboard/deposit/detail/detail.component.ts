@@ -19,7 +19,7 @@ import { ReopenComponent } from '../../../../components/reopen/reopen.component'
 import { environment } from '../../../../../environments/environment';
 import { formatUnits } from '../../../../modules/amount';
 import { deleteWarning } from '../../../../modules/deposit';
-import { DISCOUNT_STATUS, discountState, owed } from '../../../../modules/discount';
+import { DISCOUNT_STATUS, discountOver, discountState, due, owed } from '../../../../modules/discount';
 import { errorMessage } from '../../../../modules/error';
 import { live } from '../../../../modules/live';
 import { STATUS } from '../../../../modules/status';
@@ -83,6 +83,7 @@ export class DetailComponent implements OnInit {
   protected readonly status = STATUS;
   protected readonly discountStatus = DISCOUNT_STATUS;
   protected readonly discountState = discountState;
+  protected readonly discountOver = discountOver;
   protected readonly formatUnits = formatUnits;
 
   /** Owners only. */
@@ -126,9 +127,11 @@ export class DetailComponent implements OnInit {
     return deposit && environment.webUrl ? `${environment.webUrl}/pay/${deposit.id}` : null;
   });
 
+  /** The price due: the original price once its discount ended unpaid, else the expected amount. */
   protected readonly expected = computed(() => {
     const d = this.deposit();
-    return d?.expected_amount ? formatUnits(d.expected_amount, d.decimals) : null;
+    const price = d ? due(d) : null;
+    return d && price ? formatUnits(price, d.decimals) : null;
   });
 
   protected readonly received = computed(() => {
@@ -139,10 +142,11 @@ export class DetailComponent implements OnInit {
   /** What the customer still has to send: the expected amount less what came. */
   protected readonly owed = computed(() => {
     const d = this.deposit();
-    if (!d?.expected_amount) {
+    const price = d ? due(d) : null;
+    if (!d || !price) {
       return null;
     }
-    const rest = BigInt(d.expected_amount) - BigInt(d.received_amount);
+    const rest = BigInt(price) - BigInt(d.received_amount);
     return formatUnits((rest > 0n ? rest : 0n).toString(), d.decimals);
   });
 

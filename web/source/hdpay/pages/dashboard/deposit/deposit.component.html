@@ -113,15 +113,26 @@
           <td><code class="address" [title]="deposit.address">{{ deposit.path }}</code></td>
           <td nzAlign="right">
             @if (deposit.expected_amount) {
-              {{ formatUnits(deposit.expected_amount, deposit.decimals) }}
-              @if (deposit.discount && deposit.discount.amount === deposit.expected_amount) {
-                <!-- the original price, struck through, says there is a discount; its details on hover -->
-                <div class="muted">
-                  <s nz-tooltip
-                     [nzTooltipTitle]="deposit.discount.percent + '% off until ' + (deposit.discount.ends_at | date: 'MMM d, y h:mm a') + ': ' + discountStatus[discountState(deposit) ?? deposit.discount.status].label">
-                    {{ formatUnits(deposit.discount.full_amount, deposit.decimals) }}
-                  </s>
-                </div>
+              <!-- the price due on top; the other price of its discount under it, struck through, details on hover -->
+              {{ formatUnits(due(deposit)!, deposit.decimals) }}
+              @if (deposit.discount; as discount) {
+                @if (discountOver(deposit)) {
+                  <!-- ended unpaid: the full price is due, the discounted one it had is struck through -->
+                  <div class="muted">
+                    <s nz-tooltip
+                       [nzTooltipTitle]="discount.percent + '% off ended ' + (discount.ends_at | date: 'MMM d, y h:mm a') + ' before it was paid: the full price is due'">
+                      {{ formatUnits(discount.amount, deposit.decimals) }}
+                    </s>
+                  </div>
+                } @else if (discount.amount === deposit.expected_amount) {
+                  <!-- the discount counts: the original price is struck through -->
+                  <div class="muted">
+                    <s nz-tooltip
+                       [nzTooltipTitle]="discount.percent + '% off until ' + (discount.ends_at | date: 'MMM d, y h:mm a') + ': ' + discountStatus[discountState(deposit) ?? discount.status].label">
+                      {{ formatUnits(discount.full_amount, deposit.decimals) }}
+                    </s>
+                  </div>
+                }
               }
             } @else {
               <span class="muted">any</span>
@@ -129,7 +140,7 @@
           </td>
           <td nzAlign="right">{{ formatUnits(deposit.received_amount, deposit.decimals) }}</td>
           <td nzAlign="right">
-            @if (difference(deposit.received_amount, deposit.expected_amount, deposit.decimals); as diff) {
+            @if (difference(deposit.received_amount, due(deposit), deposit.decimals); as diff) {
               <span [class]="'diff diff-' + diff.kind">{{ diff.text }}</span>
             } @else {
               <span class="muted">&mdash;</span>

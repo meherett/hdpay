@@ -3,8 +3,13 @@
     @if (deposit(); as d) {
       <h1>
         {{ expected() ? expected() + ' ' : '' }}{{ d.asset }} on {{ d.chain_name }}
-        @if (d.discount && d.discount.amount === d.expected_amount) {
-          <s class="was">{{ formatUnits(d.discount.full_amount, d.decimals) }}</s>
+        @if (d.discount; as discount) {
+          @if (discountOver(d)) {
+            <!-- ended unpaid: the original price is due, the discounted one it had is struck through -->
+            <s class="was">{{ formatUnits(discount.amount, d.decimals) }}</s>
+          } @else if (discount.amount === d.expected_amount) {
+            <s class="was">{{ formatUnits(discount.full_amount, d.decimals) }}</s>
+          }
         }
       </h1>
       <p>

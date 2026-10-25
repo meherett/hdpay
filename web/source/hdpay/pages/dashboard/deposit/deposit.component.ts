@@ -19,7 +19,7 @@ import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap,
 import { ReopenComponent } from '../../../components/reopen/reopen.component';
 import { difference, formatUnits } from '../../../modules/amount';
 import { deleteWarning } from '../../../modules/deposit';
-import { DISCOUNT_STATUS, discountState } from '../../../modules/discount';
+import { DISCOUNT_STATUS, discountOver, discountState, due } from '../../../modules/discount';
 import { errorMessage } from '../../../modules/error';
 import { live } from '../../../modules/live';
 import { STATUS, STATUSES } from '../../../modules/status';
@@ -79,6 +79,9 @@ export class DepositComponent {
   protected readonly statusInfo = STATUS;
   protected readonly discountStatus = DISCOUNT_STATUS;
   protected readonly discountState = discountState;
+
+  protected readonly discountOver = discountOver;
+  protected readonly due = due;
   protected readonly formatUnits = formatUnits;
   protected readonly difference = difference;
 

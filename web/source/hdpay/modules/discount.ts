@@ -28,6 +28,16 @@ export function discountState(d: DepositInterface): DiscountInterface['status'] 
   return d.discount.status === 'active' && discountEnded(d) ? 'lapsed' : d.discount.status;
 }
 
+/** Its discount ended before it was paid, and support did not keep it: the original price is due. */
+export function discountOver(d: DepositInterface): boolean {
+  return !!d.discount && !['confirmed', 'swept'].includes(d.internal_status) && discountState(d) === 'lapsed';
+}
+
+/** The price due now, in base units: the original price once its discount ended unpaid, else the expected amount. */
+export function due(d: DepositInterface): string | null {
+  return discountOver(d) ? d.discount!.full_amount : d.expected_amount;
+}
+
 /**
  * What the customer still owes, in base units: nothing once paid; against the full price once a
  * discount has ended unpaid (or the discounted one when `keep`); else against the expected amount.
