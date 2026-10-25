@@ -84,6 +84,9 @@ export class HomeComponent {
 
   protected readonly year = new Date().getFullYear();
   protected readonly users = signal<UserInterface[]>([]);
+  /** Buyers from public/users.json: picked from the list, sent like a custom user. */
+  protected readonly fileUsers = signal<UserInterface[]>([]);
+  protected readonly FILE = 'file:';
   /** The "Custom user" entry in the list: a buyer typed in, for this order only. */
   protected readonly CUSTOM = 'custom';
   protected readonly customForm: FormGroup = this.formBuilder.group({
@@ -120,8 +123,18 @@ export class HomeComponent {
   private readonly assetValue = toSignal(this.formGroup.controls['asset'].valueChanges, { initialValue: null });
 
   protected readonly custom = computed(() => this.accountValue() === this.CUSTOM);
-  /** The chosen user, or the custom buyer once their fields are filled in. */
+  /** The buyer chosen from users.json, if one is. */
+  protected readonly fileUser = computed(() => {
+    const value = this.accountValue() as string | null;
+    return value?.startsWith(this.FILE)
+      ? (this.fileUsers().find((u) => this.FILE + u.account_id === value) ?? null)
+      : null;
+  });
+  /** The chosen user, a buyer from users.json, or the custom buyer once their fields are filled in. */
   protected readonly user = computed<UserInterface | null>(() => {
+    if (this.fileUser()) {
+      return this.fileUser();
+    }
     if (!this.custom()) {
       return this.users().find((u) => u.account_id === this.accountValue()) ?? null;
     }
@@ -204,6 +217,11 @@ export class HomeComponent {
     this.title.setTitle('HDPay - Checkout');
 
     this.userService
+      .fromFile()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((users) => this.fileUsers.set(users));
+
+    this.userService
       .list()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -274,8 +292,8 @@ export class HomeComponent {
     if (!buyer) {
       return;
     }
-    // a custom buyer goes with the order; one of the shop's users is named by the account ID alone
-    const who = this.custom() ? { account_id: buyer.account_id, name: buyer.name, email: buyer.email } : { account_id: buyer.account_id };
+    // a custom buyer or one from users.json goes with the order; the shop's users by the account ID alone
+    const who = this.custom() || this.fileUser() ? { account_id: buyer.account_id, name: buyer.name, email: buyer.email } : { account_id: buyer.account_id };
     const discount = discount_percent
       ? { discount_percent: Number(discount_percent), discount_ends_at: new Date(discount_ends_at).toISOString() }
       : {};

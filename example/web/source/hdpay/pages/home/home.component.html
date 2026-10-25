@@ -37,6 +37,18 @@
                       </div>
                     </nz-option>
                   }
+                  @if (fileUsers().length) {
+                    <nz-option-group nzLabel="Users">
+                      @for (u of fileUsers(); track u.account_id) {
+                        <nz-option nzCustomContent [nzValue]="FILE + u.account_id" [nzLabel]="u.name + ' · ' + u.account_id">
+                          <div class="user-option">
+                            <span>{{ u.name }}</span>
+                            <span class="user-option-note">{{ u.email }} · account {{ u.account_id }}</span>
+                          </div>
+                        </nz-option>
+                      }
+                    </nz-option-group>
+                  }
                   <nz-option nzCustomContent [nzValue]="CUSTOM" nzLabel="Custom user">
                     <div class="user-option">
                       <span>Custom user</span>
@@ -45,8 +57,9 @@
                   </nz-option>
                 </nz-select>
               </nz-form-control>
-              @if (!users().length && !error()) {
-                <div class="hint">No users yet: run <code>python -m source.users seed</code> in example/api, or choose Custom user.</div>
+              @if (!users().length && !fileUsers().length && !error()) {
+                <div class="hint">No users yet: run <code>python -m source.users seed</code> in example/api, add some to
+                  <code>public/users.json</code>, or choose Custom user.</div>
               }
             </nz-form-item>
 

@@ -1,0 +1,12 @@
+[
+  { "account_id": "2001", "name": "Mehret Tesfaye", "email": "mehret.tesfaye@example.com" },
+  { "account_id": "2002", "name": "Daniel Bekele", "email": "daniel.bekele@example.com" },
+  { "account_id": "2003", "name": "Sara Haile", "email": "sara.haile@example.com" },
+  { "account_id": "2004", "name": "Lucas Moreau", "email": "lucas.moreau@example.com" },
+  { "account_id": "2005", "name": "Amara Okafor", "email": "amara.okafor@example.com" },
+  { "account_id": "2006", "name": "Yuki Tanaka", "email": "yuki.tanaka@example.com" },
+  { "account_id": "2007", "name": "Elena Petrova", "email": "elena.petrova@example.com" },
+  { "account_id": "2008", "name": "Omar Haddad", "email": "omar.haddad@example.com" },
+  { "account_id": "2009", "name": "Liya Girma", "email": "liya.girma@example.com" },
+  { "account_id": "2010", "name": "Noah Fischer", "email": "noah.fischer@example.com" }
+]
