@@ -82,24 +82,24 @@ services:
       retries: 3
       start_period: 20s
 
-  web:
-    build: ../web
-    image: ghcr.io/meherett/hdpay-web:latest
-    restart: unless-stopped
-    depends_on:
-      - api
-    ports:
-      - "127.0.0.1:4500:80"
-    environment:
-      HDPAY_API_URL: http://api:8090
-    networks:
-      default:
-        ipv4_address: 172.28.0.10   # trusted by the api for X-Forwarded-For
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "5"
+#  web:
+#    build: ../web
+#    image: ghcr.io/meherett/hdpay-web:latest
+#    restart: unless-stopped
+#    depends_on:
+#      - api
+#    ports:
+#      - "127.0.0.1:4500:80"
+#    environment:
+#      HDPAY_API_URL: http://api:8090
+#    networks:
+#      default:
+#        ipv4_address: 172.28.0.10   # trusted by the api for X-Forwarded-For
+#    logging:
+#      driver: json-file
+#      options:
+#        max-size: 10m
+#        max-file: "5"
 
   # The way in, on the VM: hdpay.systems, api.hdpay.systems and example.hdpay.systems over HTTPS, routed
   # to the services by name (nginx/sites-available/hdpay-systems.conf). Off by default (--profile nginx,
@@ -109,7 +109,7 @@ services:
     profiles: ["nginx"]
     restart: unless-stopped
     depends_on:
-      - web
+#      - web
       - api
     ports:
       - "80:80"
@@ -211,19 +211,6 @@ services:
       - "127.0.0.1:4400:80"
     environment:
       EXAMPLE_API_URL: http://example-api:8400
-
-  # Off by default: Atlas is used for now. Start it with --profile mongo.
-#  mongo:
-#    image: mongo:8
-#    profiles: ["mongo"]
-#    restart: unless-stopped
-#    volumes:
-#      - mongo-data:/data/db
-#    healthcheck:
-#      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-#      interval: 30s
-#      timeout: 5s
-#      retries: 3
 
 networks:
   default:
