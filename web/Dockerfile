@@ -4,7 +4,9 @@
 #   docker run -p 4500:80 -e HDPAY_API_URL=http://hdpay-api:8090 hdpay-web
 
 # ---- build
-FROM node:24-alpine AS build
+# the built app is plain HTML, JS and CSS, the same on every platform: build it once, natively, even
+# when the image is made for several platforms (only the nginx stage below is per platform)
+FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 WORKDIR /hdpay
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund

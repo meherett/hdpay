@@ -65,6 +65,13 @@ export class SweeperComponent {
   protected readonly error = signal<string | null>(null);
   protected readonly updatedAt = signal<Date | null>(null);
   protected readonly releasing = signal<string | null>(null);
+  /** The queue and Recently swept: the page shown of each, kept through the refreshes. */
+  protected readonly queuePage = signal(1);
+  protected readonly queueSize = signal(10);
+  protected readonly queueLoading = signal(false);
+  protected readonly recentPage = signal(1);
+  protected readonly recentSize = signal(10);
+  protected readonly recentLoading = signal(false);
   protected readonly stages = Object.keys(STAGE) as SweepStage[];
   protected readonly stage = STAGE;
   protected readonly formatUnits = formatUnits;
@@ -86,19 +93,55 @@ export class SweeperComponent {
   }
 
   private fetch() {
-    return this.adminService.sweeper().pipe(
+    return this.adminService
+      .sweeper({ page: this.queuePage(), size: this.queueSize() }, { page: this.recentPage(), size: this.recentSize() })
+      .pipe(
       tap((data) => {
         this.data.set(data);
         this.updatedAt.set(new Date());
         this.error.set(null);
         this.loading.set(false);
+        this.queueLoading.set(false);
+        this.recentLoading.set(false);
       }),
       catchError((response: HttpErrorResponse) => {
         this.error.set(errorMessage(response));
         this.loading.set(false);
+        this.queueLoading.set(false);
+        this.recentLoading.set(false);
         return of(null);
       })
     );
+  }
+
+  protected queueTotal(d: SweeperInterface): number {
+    return d.counts.waiting + d.counts.topping_up + d.counts.sweeping + d.counts.held;
+  }
+
+  protected onQueuePage(page: number): void {
+    this.queuePage.set(page);
+    this.queueLoading.set(true);
+    this.refresh();
+  }
+
+  protected onQueueSize(size: number): void {
+    this.queueSize.set(size);
+    this.queuePage.set(1);
+    this.queueLoading.set(true);
+    this.refresh();
+  }
+
+  protected onRecentPage(page: number): void {
+    this.recentPage.set(page);
+    this.recentLoading.set(true);
+    this.refresh();
+  }
+
+  protected onRecentSize(size: number): void {
+    this.recentSize.set(size);
+    this.recentPage.set(1);
+    this.recentLoading.set(true);
+    this.refresh();
   }
 
   protected stageOf(d: DepositInterface): SweepStage {

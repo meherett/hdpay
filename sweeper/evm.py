@@ -17,7 +17,7 @@ from eth_account import Account
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
-from api.chains import Chain, TxStatus
+from api.chains import Chain, TxStatus, deposit_token
 from api.evm import web3_for
 from api.keys import funder_private_key, private_key_for_path
 from api.db import Deposit
@@ -100,7 +100,7 @@ class EvmSweeper(Sweeper):
         d.sweep_tx_hash = self._send(account, {"to": treasury, "value": value, "gas": gas, **fee_fields})
 
     def _sweep_token(self, d: Deposit, account, treasury: str, number: int) -> None:
-        token = self.chain.tokens[d.asset]
+        token = deposit_token(self.chain, d)   # the contract it was opened with
         contract = self.w3.eth.contract(address=Web3.to_checksum_address(token.contract), abi=ERC20_ABI)
         amount = contract.functions.balanceOf(account.address).call()
         if amount == 0:

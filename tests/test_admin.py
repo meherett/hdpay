@@ -138,6 +138,10 @@ def test_the_sweeper_page_and_releasing_a_hold(client, admin, mongo, project):
     page = client.get("/admin/sweeper", headers=sign_in(client, "owner@example.com")).json()
     assert page["counts"] == {"waiting": 1, "topping_up": 0, "sweeping": 0, "held": 1, "swept": 1}
     assert [d["id"] for d in page["recent"]] == [swept["id"]]
+    assert [d["id"] for d in page["queue"]] == [held["id"], waiting["id"]]           # held first
+    second = client.get("/admin/sweeper?queue_size=1&queue_page=2", headers=sign_in(client, "owner@example.com")).json()
+    assert [d["id"] for d in second["queue"]] == [waiting["id"]] and second["counts"]["held"] == 1
+    assert client.get("/admin/sweeper?recent=1&recent_page=2", headers=sign_in(client, "owner@example.com")).json()["recent"] == []
     released = client.post(f"/admin/deposits/{held['id']}/release", headers=admin)
     assert released.status_code == 200 and released.json()["sweep_hold"] is None
     assert client.post(f"/admin/deposits/{held['id']}/release", headers=admin).status_code == 409

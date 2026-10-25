@@ -13,7 +13,7 @@ from typing import Any
 from tronpy.exceptions import AddressNotFound, TransactionNotFound
 from tronpy.keys import PrivateKey, to_base58check_address, to_hex_address, to_tvm_address
 
-from api.chains import Chain, Token, TxStatus
+from api.chains import Chain, Token, TxStatus, deposit_token
 from api.keys import funder_private_key, private_key_for_path
 from api.db import Deposit
 from api.tron import make_client
@@ -65,7 +65,7 @@ class TronSweeper(Sweeper):
         if self.chain.is_native(d.asset):
             self._sweep_native(d, key, treasury)
         else:
-            self._sweep_token(d, key, self.chain.tokens[d.asset], treasury, project["number"])
+            self._sweep_token(d, key, deposit_token(self.chain, d), treasury, project["number"])
 
     def _sweep_native(self, d: Deposit, key: PrivateKey, treasury: str) -> None:
         balance = self._balance(d.address)

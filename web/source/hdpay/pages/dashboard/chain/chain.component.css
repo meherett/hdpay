@@ -1,0 +1,61 @@
+.show-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.summary {
+  margin-bottom: 16px;
+}
+
+.network-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.network-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.network-state {
+  text-align: right;
+}
+
+.network.retired h2,
+tr.retired td {
+  opacity: 0.65;
+}
+
+.contract code {
+  word-break: break-all;
+}
+
+.history {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.problem {
+  margin-top: 4px;
+  color: var(--ant-color-error, #cf1322);
+  font-size: 12px;
+}
+
+.verified {
+  color: var(--ant-color-success, #389e0d);
+}
+
+@media (max-width: 600px) {
+  .network-head {
+    flex-direction: column;
+  }
+
+  .network-state {
+    text-align: left;
+  }
+}

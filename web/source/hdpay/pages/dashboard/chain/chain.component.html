@@ -1,0 +1,122 @@
+<div class="page-head">
+  <div>
+    <h1>Chains</h1>
+    <p class="muted">
+      From chains.yaml, kept in the database. A coin taken out of the file is never deleted: it stays here as
+      not supported, with its contract and decimals, for the deposits it had.
+    </p>
+  </div>
+  <label class="show-all">
+    <nz-switch [ngModel]="showAll()" (ngModelChange)="showAll.set($event)" nzSize="small" />
+    Show not supported
+  </label>
+</div>
+
+@if (error(); as message) {
+  <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
+}
+
+@if (networks()) {
+  <div class="summary">
+    <nz-tag nzColor="success">{{ counts().supported }} supported</nz-tag>
+    <nz-tag>{{ counts().unsupported }} not supported</nz-tag>
+    @if (counts().problems) {
+      <nz-tag nzColor="error">{{ counts().problems }} need attention</nz-tag>
+    }
+  </div>
+
+  @for (network of shown(); track network.key) {
+    <nz-card class="block network" [class.retired]="!network.supported">
+      <div class="network-head">
+        <div>
+          <h2>{{ network.name }}</h2>
+          <div class="muted">
+            <code>{{ network.key }}</code> · {{ network.family }}
+            @if (network.chain_id) {
+              · chain id {{ network.chain_id }}
+            }
+            · {{ network.confirmations }} confirmation{{ network.confirmations === 1 ? '' : 's' }}
+            · {{ network.token_standard }}
+          </div>
+        </div>
+        <div class="network-state">
+          @if (network.supported) {
+            <nz-tag nzColor="success">supported</nz-tag>
+          } @else {
+            <nz-tag>not supported</nz-tag>
+            @if (network.supported_until) {
+              <div class="muted">since {{ network.supported_until | date: 'MMM d, y' }}</div>
+            }
+          }
+          <div class="muted">{{ network.deposits }} deposit{{ network.deposits === 1 ? '' : 's' }}</div>
+        </div>
+      </div>
+
+      <nz-table #table [nzData]="network.assets" [nzShowPagination]="false" nzSize="small" [nzScroll]="{ x: '860px' }">
+        <thead>
+          <tr>
+            <th nzWidth="110px">Coin</th>
+            <th>Contract</th>
+            <th nzAlign="right" nzWidth="90px">Decimals</th>
+            <th nzWidth="150px">Status</th>
+            <th nzWidth="190px">Supported</th>
+            <th nzAlign="right" nzWidth="90px">Deposits</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (asset of table.data; track asset.symbol) {
+            <tr [class.retired]="!asset.supported">
+              <td>
+                <strong>{{ asset.symbol }}</strong>
+                @if (asset.native) {
+                  <div class="muted">native</div>
+                }
+              </td>
+              <td>
+                @if (asset.contract) {
+                  <a class="contract" [href]="contractUrl(network, asset.contract)" target="_blank" rel="noopener">
+                    <code>{{ asset.contract }}</code>
+                  </a>
+                } @else {
+                  <span class="muted">—</span>
+                }
+                @for (change of asset.history; track change.until) {
+                  <div class="muted history">
+                    before {{ change.until | date: 'MMM d, y' }}: <code>{{ change.contract }}</code>, {{ change.decimals }} decimals
+                  </div>
+                }
+                @if (asset.problem) {
+                  <div class="problem">{{ asset.problem }}</div>
+                }
+              </td>
+              <td nzAlign="right">{{ asset.decimals ?? '—' }}</td>
+              <td>
+                <nz-tag [nzColor]="color(asset)">{{ asset.status }}</nz-tag>
+                @if (asset.verified_at) {
+                  <nz-icon nzType="safety-certificate" class="verified" nz-tooltip
+                           [nzTooltipTitle]="'Decimals confirmed by the contract on ' + (asset.verified_at | date: 'MMM d, y h:mm a')" />
+                }
+              </td>
+              <td>
+                @if (asset.supported_since) {
+                  <div>from {{ asset.supported_since | date: 'MMM d, y' }}</div>
+                }
+                @if (asset.supported_until) {
+                  <div>until {{ asset.supported_until | date: 'MMM d, y' }}</div>
+                }
+                @if (!asset.supported_since && !asset.supported_until) {
+                  <span class="muted">—</span>
+                }
+              </td>
+              <td nzAlign="right">{{ asset.deposits }}</td>
+            </tr>
+          }
+        </tbody>
+      </nz-table>
+    </nz-card>
+  } @empty {
+    <nz-card><p class="muted">No networks.</p></nz-card>
+  }
+} @else if (!error()) {
+  <nz-card><nz-skeleton [nzActive]="true" [nzParagraph]="{ rows: 6 }" /></nz-card>
+}

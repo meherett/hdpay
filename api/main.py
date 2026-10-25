@@ -38,6 +38,12 @@ async def lifespan(_: FastAPI):
     db = get_db()
     db.client.admin.command("ping")
     create_indexes(db)
+    try:
+        from .chain_sync import sync_chains
+
+        sync_chains(db)   # what chains.yaml changed since the last start, checked against the chains
+    except Exception:
+        log.exception("chains.yaml could not be brought into the database; the API runs on the file alone")
     yield
 
 

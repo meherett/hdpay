@@ -26,7 +26,7 @@ class StubScanner(Scanner):
     def latest_block(self):
         return self.head
 
-    def scan(self, start, end, watched, assets):
+    def scan(self, start, end, watched, assets, tokens=None):
         self.scanned.append((start, end))
         return [
             p for n in range(start, end + 1) for p in self.blocks.get(n, [])
@@ -36,7 +36,7 @@ class StubScanner(Scanner):
     def tx_status(self, tx_hash, block_number):
         return self.statuses.get(tx_hash, TxStatus.FAILED)
 
-    def balance_at(self, address, asset, block):
+    def balance_at(self, address, asset, block, contract=None):
         return self.balances.get((address, asset))
 
     def block_time(self, block):

@@ -1,6 +1,7 @@
 """Balances (native coins and tokens), read straight from each chain's RPC for the admin app."""
 
 import logging
+from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor
 
 from web3 import Web3
@@ -134,14 +135,19 @@ class TokenMismatch(RuntimeError):
     """A token in the chains file does not match its contract on chain."""
 
 
-def verify_tokens(chain: Chain) -> list[str]:
-    """Check every token of the chain against its contract before a watcher or sweeper starts.
+def verify_tokens(chain: Chain, confirmed: Collection[str] = ()) -> list[str]:
+    """Check the chain's tokens against their contracts before a watcher or sweeper starts; those in
+    `confirmed` (already checked, as the database records, with the same contract and decimals) are not
+    asked again.
 
     Wrong decimals would credit wrong amounts, so they stop the process; a different symbol is
     only reported, since some tokens name themselves differently (e.g. USDT0, USD₮).
     """
     notes, problems = [], []
     for token in chain.tokens.values():
+        if token.symbol in confirmed:
+            notes.append(f"{token.symbol} at {token.contract}: {token.decimals} decimals, confirmed before")
+            continue
         try:
             decimals, symbol = token_metadata(chain, token)
         except Exception as exc:

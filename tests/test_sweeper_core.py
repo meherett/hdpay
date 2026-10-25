@@ -141,3 +141,12 @@ def test_a_project_without_a_treasury_waits(project):
     s = StubSweeper()
     sweep_once(s)
     assert s.sent == [] and get(d).status == Status.CONFIRMED
+
+
+def test_a_deposit_whose_coin_left_the_chains_file_is_held_with_the_reason():
+    d = confirmed_deposit()
+    update(d, asset="USDC")                       # USDC is not listed for Tron Nile
+    s = StubSweeper()
+    sweep_once(s)                                 # no crash, nothing sent
+    got = get(d)
+    assert s.sent == [] and "its contract is not known" in got.sweep_hold

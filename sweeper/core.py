@@ -21,7 +21,7 @@ from typing import Any
 from pymongo import ASCENDING
 from pymongo.database import Database
 
-from api.chains import Family, TxStatus, follow
+from api.chains import Family, TxStatus, follow, handles
 from api.db import Deposit, Status, create_indexes, find_deposits, get_db, set_counter, utcnow
 from api.deposits import notify_status
 from api.keys import project_xpub
@@ -70,6 +70,10 @@ def advance(sweeper: Sweeper, d: Deposit, project: dict[str, Any]) -> None:
             d.fee_tx_hash = None
             return
         d.fee_tx_hash = None
+
+    if not handles(sweeper.chain, d):
+        hold(d, f"{d.asset} on {sweeper.chain.name}: its contract is not known; add it to chains.yaml, then release")
+        return
 
     treasury = sweeper.treasury(project)
     if not treasury:

@@ -80,12 +80,35 @@ class Chain:
     def decimals(self, asset: str) -> int:
         return self.native_decimals if self.is_native(asset) else self.tokens[asset].decimals
 
+    def lists(self, asset: str) -> bool:
+        """The asset is in the chains file for this chain. A deposit's may not be: a token taken out
+        of the file after deposits were opened for it."""
+        return self.is_native(asset) or asset in self.tokens
+
     def explorer_tx(self, tx_hash: str) -> str:
         # Tronscan routes through a hash fragment; Etherscan-style explorers use plain paths
         return f"{self.explorer}/#/transaction/{tx_hash}" if self.family == Family.TRON else f"{self.explorer}/tx/{tx_hash}"
 
     def explorer_address(self, address: str) -> str:
         return f"{self.explorer}/#/address/{address}" if self.family == Family.TRON else f"{self.explorer}/address/{address}"
+
+
+def deposit_token(chain: Chain, deposit) -> Token | None:
+    """The token a deposit receives: the contract and decimals it was opened with (kept on the deposit),
+    else the chains file's. None for the native coin, or for a token neither knows."""
+    if chain.is_native(deposit.asset):
+        return None
+    listed = chain.tokens.get(deposit.asset)
+    contract = deposit.contract if deposit.has("contract") and deposit.contract else (listed and listed.contract)
+    decimals = deposit.decimals if deposit.has("decimals") and deposit.decimals is not None else (listed and listed.decimals)
+    if not contract or decimals is None:
+        return None
+    return Token(deposit.asset, contract, decimals)
+
+
+def handles(chain: Chain, deposit) -> bool:
+    """The deposit's coin can be watched and swept: the native coin, or a token whose contract is known."""
+    return chain.is_native(deposit.asset) or deposit_token(chain, deposit) is not None
 
 
 # ---- the file format, checked when it is loaded
@@ -262,9 +285,10 @@ def follow(worker, build):
     if changed == current:
         return worker
     from .balances import verify_tokens
+    from .chain_sync import confirmed_tokens
 
     try:
-        notes = verify_tokens(changed)
+        notes = verify_tokens(changed, confirmed_tokens(changed))
         replacement = build(changed)
     except Exception as exc:
         message = re.sub(r"https?://\S+", "<rpc>", str(exc))

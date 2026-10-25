@@ -5,6 +5,7 @@ import logging
 import os
 
 from api.balances import verify_tokens
+from api.chain_sync import confirmed_tokens
 from api.chains import CHAINS
 from . import make_scanner
 from .core import run
@@ -21,8 +22,9 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     chain = CHAINS[args.chain]
-    # refuse to start on a token whose decimals in the chains file do not match its contract
-    for note in verify_tokens(chain):
+    # refuse to start on a token whose decimals in the chains file do not match its contract;
+    # the tokens the database records as confirmed already are not asked again, only new or changed ones
+    for note in verify_tokens(chain, confirmed_tokens(chain)):
         logging.getLogger("hdpay.watcher").info("token %s", note)
     run(make_scanner(chain), make_scanner)
 

@@ -13,7 +13,8 @@ from pymongo.errors import DuplicateKeyError
 
 from . import apikeys, discounts, events
 from .auth import AdminUser, CurrentUser, OwnerUser, can_see, new_user, project_scope, set_password
-from .balances import asset_balances, native_balances
+from .balances import asset_balances, balance, native_balances, rpc_problem
+from .chain_sync import chain_for, load_removed, same_contract
 from .chains import CHAINS, Family
 from .config import settings
 from .db import Deposit, Status, get_counter, get_db, utcnow
@@ -30,6 +31,8 @@ from .projects import (
     setting,
 )
 from .schemas import (
+    deposit_decimals,
+    ChainView,
     AdminDefaults,
     AdminDepositList,
     AdminDepositOut,
@@ -37,6 +40,9 @@ from .schemas import (
     AssetOut,
     AssetTotal,
     ChainOut,
+    NetworkAssetOut,
+    NetworkOut,
+    TokenChangeOut,
     CreatedApiKey,
     CreateProject,
     CreateUser,
@@ -125,11 +131,11 @@ def stats(user: CurrentUser, db: DB, project_id: str | None = None):
         amounts[key] += int(d["received_amount"])
     totals = [
         AssetTotal(
-            chain=chain, chain_name=CHAINS[chain].name, asset=asset, decimals=CHAINS[chain].decimals(asset),
+            chain=chain, chain_name=chain_for(chain).name, asset=asset,
+            decimals=chain_for(chain).decimals(asset) if chain_for(chain).lists(asset) else 0,
             status=status, count=counts[(chain, asset, status)], amount=str(amounts[(chain, asset, status)]),
         )
         for chain, asset, status in sorted(counts, key=lambda k: (k[0], k[1], credited_statuses.index(k[2])))
-        if chain in CHAINS
     ]
 
     watchers = [
@@ -176,6 +182,64 @@ def all_chains(user: CurrentUser):
         )
         for c in CHAINS.values()
     ]
+
+
+@router.get("/networks", response_model=list[NetworkOut])
+def networks(user: CurrentUser, db: DB):
+    """Every network and coin chains.yaml lists or once listed: which are supported now, which were
+    accepted before and are not any more, and how many deposits each had."""
+    used: dict[tuple[str, str], int] = {}
+    for row in db.deposits.aggregate([{"$match": _in_scope(user)},
+                                      {"$group": {"_id": {"chain": "$chain", "asset": "$asset"}, "n": {"$sum": 1}}}]):
+        used[(row["_id"]["chain"], row["_id"]["asset"])] = row["n"]
+    stored = {doc["_id"]: doc for doc in db.chains.find()}
+    load_removed(db, CHAINS)   # the networks taken out of chains.yaml, as the database keeps them
+    out = []
+    for key in [*CHAINS, *sorted(k for k in stored if k not in CHAINS)]:
+        doc, file = stored.get(key) or {}, CHAINS.get(key)
+        chain = chain_for(key, doc.get("family"))
+        supported = file is not None
+        since = utc(doc.get("supported_since") or doc.get("added_at"))
+        tokens = doc.get("tokens") or {}
+        assets = [NetworkAssetOut(
+            symbol=chain.native_symbol, native=True, contract=None, decimals=chain.native_decimals,
+            status="supported" if supported else "not supported", supported=supported,
+            supported_since=since, supported_until=None if supported else utc(doc.get("supported_until")),
+            verified_at=None, problem=None, deposits=used.get((key, chain.native_symbol), 0),
+        )]
+        symbols = [*(file.tokens if file else []), *sorted(s for s in tokens if not (file and s in file.tokens))]
+        for symbol in symbols:
+            t, listed = tokens.get(symbol) or {}, file.tokens.get(symbol) if file else None
+            refused = t.get("refused")
+            if listed is None:
+                status, problem = "not supported", None
+            elif refused:
+                status = "refused"
+                problem = (f"chains.yaml says {refused['decimals']} decimals for {refused['contract']}, "
+                           f"the contract has {refused['on_chain']}: no new deposits until it is fixed")
+            elif t.get("decimals") != listed.decimals or not same_contract(chain, t.get("contract"), listed.contract):
+                status, problem = "unchecked", "new or changed in chains.yaml; its contract is read when the API starts"
+            else:
+                status, problem = "supported", None
+            assets.append(NetworkAssetOut(
+                symbol=symbol, native=False,
+                contract=t.get("contract") or (listed and listed.contract),
+                decimals=t["decimals"] if t.get("decimals") is not None else (listed and listed.decimals),
+                status=status, supported=listed is not None,
+                supported_since=utc(t.get("supported_since")) if t else None,
+                supported_until=None if listed is not None else utc(t.get("supported_until")),
+                verified_at=utc(t.get("verified_at")), problem=problem, deposits=used.get((key, symbol), 0),
+                history=[TokenChangeOut(contract=h["contract"], decimals=h["decimals"], until=utc(h["until"]))
+                         for h in t.get("history") or []],
+            ))
+        out.append(NetworkOut(
+            key=key, name=chain.name, family=chain.family, chain_id=chain.chain_id,
+            confirmations=chain.confirmations, explorer=chain.explorer, token_standard=chain.token_standard,
+            supported=supported, supported_since=since,
+            supported_until=None if supported else utc(doc.get("supported_until")),
+            deposits=sum(n for (c, _), n in used.items() if c == key), assets=assets,
+        ))
+    return out
 
 
 # ---- users
@@ -504,15 +568,27 @@ def sweep_stage(d: Deposit) -> str:
 
 
 @router.get("/sweeper", response_model=SweeperOut)
-def sweeper(owner: OwnerUser, db: DB, recent: Annotated[int, Query(ge=1, le=100)] = 20):
-    """Sweep queue, recent sweeps and each chain's sweeper check-in."""
+def sweeper(
+    owner: OwnerUser, db: DB,
+    recent: Annotated[int, Query(ge=1, le=100)] = 20,     # sweeps per page
+    recent_page: Annotated[int, Query(ge=1)] = 1,
+    queue_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    queue_page: Annotated[int, Query(ge=1)] = 1,
+):
+    """A page of the sweep queue (held first, then oldest first), a page of the sweeps (newest first),
+    the count of each (their totals) and each chain's sweeper check-in."""
     projects = projects_by_id(db)
-    queue = [Deposit(d) for d in db.deposits.find({"status": Status.CONFIRMED.value}).sort([("confirmed_at", ASCENDING), ("_id", ASCENDING)])]
+    credited = {"status": Status.CONFIRMED.value}
     counts = {"waiting": 0, "topping_up": 0, "sweeping": 0, "held": 0}
-    for d in queue:
-        counts[sweep_stage(d)] += 1
+    for doc in db.deposits.find(credited, {"sweep_hold": 1, "sweep_tx_hash": 1, "fee_tx_hash": 1}):
+        counts[sweep_stage(Deposit(doc))] += 1
+    # a held deposit needs someone: it heads the queue, on the first page
+    queue = [Deposit(d) for d in db.deposits.find(credited)
+             .sort([("sweep_hold", DESCENDING), ("confirmed_at", ASCENDING), ("_id", ASCENDING)])
+             .skip((queue_page - 1) * queue_size).limit(queue_size)]
     counts["swept"] = db.deposits.count_documents({"status": Status.SWEPT.value})
-    swept = [Deposit(d) for d in db.deposits.find({"status": Status.SWEPT.value}).sort([("swept_at", DESCENDING), ("created_at", DESCENDING)]).limit(recent)]
+    swept = [Deposit(d) for d in db.deposits.find({"status": Status.SWEPT.value}).sort([("swept_at", DESCENDING), ("created_at", DESCENDING), ("_id", DESCENDING)])
+             .skip((recent_page - 1) * recent).limit(recent)]
     sweepers = [
         SweeperState(
             chain=c.key, chain_name=c.name, family=c.family,
@@ -525,6 +601,10 @@ def sweeper(owner: OwnerUser, db: DB, recent: Annotated[int, Query(ge=1, le=100)
         sweepers=sweepers,
         queue=[_admin_deposit(d, projects) for d in queue],
         recent=[_admin_deposit(d, projects) for d in swept],
+        recent_page=recent_page,
+        recent_size=recent,
+        queue_page=queue_page,
+        queue_size=queue_size,
     )
 
 
@@ -597,6 +677,35 @@ def get_deposit(deposit_id: str, user: CurrentUser, db: DB):
     return AdminDepositOut.from_deposit(deposit, get_project(db, deposit.project_id))
 
 
+# a check can be asked for while the money may still be on its way or in question; a paid deposit is done
+CHECKABLE = (Status.PENDING, Status.EXPIRED, Status.DETECTED, Status.PARTIAL, Status.REVIEW)
+
+
+@router.post("/deposits/{deposit_id}/check", response_model=AdminDepositOut)
+def check_deposit(deposit_id: str, admin: AdminUser, db: DB):
+    """Support: have the chain's watcher rescan this address from just before the deposit was opened.
+    It counts any payment not counted yet, judged by the time of its block (so a deposit in review whose
+    rest came in time is credited), and compares the balance for coins sent through a contract."""
+    deposit = _deposit_or_404(db, deposit_id, admin)
+    if deposit.status not in CHECKABLE:
+        raise HTTPException(409, f"deposit is {deposit.status.value}: it is paid already")
+    deposit.check = {"status": "waiting", "requested_at": utcnow(), "requested_by": admin.get("name") or admin["email"]}
+    deposit.save(db)
+    return AdminDepositOut.from_deposit(deposit, get_project(db, deposit.project_id))
+
+
+@router.get("/deposits/{deposit_id}/chain", response_model=ChainView)
+def deposit_on_chain(deposit_id: str, user: CurrentUser, db: DB):
+    """The address's balance now, read from the chain, and when the chain's watcher last ran."""
+    deposit = _deposit_or_404(db, deposit_id, user)
+    seen = get_counter(db, f"heartbeat:{deposit.chain}")
+    try:
+        amount, error = str(balance(CHAINS[deposit.chain], deposit.asset, deposit.address)), None
+    except Exception as exc:
+        amount, error = None, rpc_problem(exc)
+    return ChainView(balance=amount, error=error, watcher_seen_at=_iso_timestamp(seen))
+
+
 @router.post("/deposits/{deposit_id}/credit", response_model=AdminDepositOut)
 def credit_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB):
     """Support action: credit an underpaid deposit as it is, after a person checked it."""
@@ -638,7 +747,7 @@ def reopen_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB, body: Reo
             raise HTTPException(422, f"product must be one of {', '.join(listed)}" if listed else "there are no products")
         price = listed[body.product].get("price")
         if body.product != deposit.product and price and deposit.asset in USD_STABLECOINS:
-            decimals = CHAINS[deposit.chain].decimals(deposit.asset)
+            decimals = deposit_decimals(deposit)
             full = price_amount(price, decimals)
             deposit.expected_amount = str(full)
             if deposit.discount:

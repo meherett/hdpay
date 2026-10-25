@@ -186,7 +186,7 @@ def test_a_running_worker_follows_its_chain(tmp_path, monkeypatch):
     path = write(tmp_path, [evm_chain()])
     registry = ChainRegistry(path)
     monkeypatch.setattr(chains_module, "CHAINS", registry)
-    monkeypatch.setattr(balances, "verify_tokens", lambda chain: [])
+    monkeypatch.setattr(balances, "verify_tokens", lambda chain, confirmed=(): [])
     worker = Worker(registry["base"])
     bump(path, [evm_chain(confirmations=20)])
     registry._checked = 0
@@ -199,7 +199,7 @@ def test_a_worker_keeps_its_settings_when_the_new_tokens_fail_the_check(tmp_path
     registry = ChainRegistry(path)
     monkeypatch.setattr(chains_module, "CHAINS", registry)
 
-    def mismatch(chain):
+    def mismatch(chain, confirmed=()):
         raise balances.TokenMismatch("Base: USDC decimals differ")
 
     monkeypatch.setattr(balances, "verify_tokens", mismatch)

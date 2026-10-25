@@ -64,6 +64,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/dashboard/user/user.component').then((m) => m.UserComponent)
       },
       {
+        path: 'chain',
+        loadComponent: () => import('./pages/dashboard/chain/chain.component').then((m) => m.ChainComponent)
+      },
+      {
         path: 'password',
         loadComponent: () =>
           import('./pages/dashboard/password/password.component').then((m) => m.PasswordComponent)

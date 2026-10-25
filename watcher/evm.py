@@ -42,11 +42,16 @@ class EvmScanner(Scanner):
     def block_time(self, block: int) -> datetime | None:
         return datetime.fromtimestamp(self.w3.eth.get_block(block)["timestamp"], UTC).replace(tzinfo=None)
 
-    def scan(self, start: int, end: int, watched: set[str], assets: set[str]) -> list[Payment]:
+    def scan(
+        self, start: int, end: int, watched: set[str], assets: set[str], tokens: list | None = None
+    ) -> list[Payment]:
+        """`tokens`: the contracts to look at (the watched deposits' own); else the file's, for `assets`."""
         payments = []
         if self.chain.native_symbol in assets:
             payments += self._scan_native(start, end, watched)
-        tokens = {t.contract.lower(): t for symbol, t in self.chain.tokens.items() if symbol in assets}
+        if tokens is None:
+            tokens = [t for symbol, t in self.chain.tokens.items() if symbol in assets]
+        tokens = {t.contract.lower(): t for t in tokens}
         if tokens:
             payments += self._scan_tokens(start, end, watched, tokens)
         return payments
@@ -90,9 +95,10 @@ class EvmScanner(Scanner):
             return TxStatus.FAILED
         return TxStatus.OK if receipt["status"] == 1 else TxStatus.FAILED
 
-    def balance_at(self, address: str, asset: str, block: int) -> int | None:
+    def balance_at(self, address: str, asset: str, block: int, contract: str | None = None) -> int | None:
         owner = Web3.to_checksum_address(address)
         if self.chain.is_native(asset):
             return self.w3.eth.get_balance(owner, block_identifier=block)
-        token = self.w3.eth.contract(address=Web3.to_checksum_address(self.chain.tokens[asset].contract), abi=_BALANCE_OF_ABI)
+        contract = contract or self.chain.tokens[asset].contract
+        token = self.w3.eth.contract(address=Web3.to_checksum_address(contract), abi=_BALANCE_OF_ABI)
         return token.functions.balanceOf(owner).call(block_identifier=block)

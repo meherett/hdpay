@@ -44,6 +44,11 @@ def open_deposit(db: Database, project: dict[str, Any], body: CreateDeposit) -> 
         raise HTTPException(422, f"this project does not accept {body.chain!r}; it accepts {names}")
     if body.asset not in usable[chain.key]:
         raise HTTPException(422, f"this project accepts {', '.join(usable[chain.key])} on {chain.name}, not {body.asset!r}")
+    from .chain_sync import refused
+
+    reason = refused(db, chain.key, body.asset)
+    if reason:
+        raise HTTPException(503, reason)
     listed = [p["value"] for p in project.get("products") or []]
     if listed and body.product not in listed:
         raise HTTPException(422, f"product must be one of {', '.join(listed)}")
@@ -101,8 +106,14 @@ def open_deposit(db: Database, project: dict[str, Any], body: CreateDeposit) -> 
         path=full_path(project["number"], chain.family, day, account_id, index),
         address=address_at(chain.family, project["xpubs"][chain.family], day, account_id, index),
         expected_amount=str(body.expected_amount) if body.expected_amount else None,
+        decimals=chain.decimals(body.asset),   # kept, so its amounts read right if the coin leaves the file
+        # and its contract, so it is watched and swept there even if the file's contract changes later
+        contract=None if chain.is_native(body.asset) else chain.tokens[body.asset].contract,
         created_at=now,
         expires_at=now + timedelta(minutes=setting(project, "deposit_ttl_minutes")),
+        # the payment window as opened; expires_at moves (remainder window, reopen), this stays, so a
+        # payment can always be judged on time or late against it
+        window_ends_at=now + timedelta(minutes=setting(project, "deposit_ttl_minutes")),
         **({"discount": discount} if discount else {}),
     )
     deposit.insert(db)

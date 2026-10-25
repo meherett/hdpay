@@ -83,6 +83,15 @@
     </ng-template>
   }
 
+  @if (!d.asset_supported) {
+    <nz-alert
+      class="block"
+      nzType="warning"
+      nzShowIcon
+      [nzMessage]="d.asset + ' on ' + d.chain_name + ' is not supported any more'"
+      nzDescription="It was accepted when this deposit opened and taken out of chains.yaml since (see Chains). The deposit is kept with its contract and decimals, so its history reads right; to stop new deposits in a coin, untick it in the project's settings instead." />
+  }
+
   @if (d.sweep_hold) {
     <nz-alert
       class="block"
@@ -176,6 +185,138 @@
       </nz-descriptions>
     </nz-card>
   }
+
+  <nz-card class="block" nzTitle="Payments on the chain" [nzExtra]="checkButton">
+    <ng-template #checkButton>
+      @if (auth.isAdmin() && checkable(d)) {
+        <button nz-button nzType="primary" [nzLoading]="checking() || d.check?.status === 'waiting'"
+                [disabled]="d.check?.status === 'waiting'" (click)="check()" nz-tooltip
+                nzTooltipTitle="Rescan this address from when the deposit was opened, and count any payment not counted yet">
+          @if (d.check?.status === 'waiting') {
+            Checking…
+          } @else {
+            <nz-icon nzType="search" />
+            Check payments
+          }
+        </button>
+      }
+    </ng-template>
+
+    <div class="chain-balance">
+      <span class="muted">On-chain balance</span>
+      @if (onChain(); as view) {
+        @if (view.balance !== null) {
+          <strong>{{ amount(view.balance, d) }} {{ d.asset }}</strong>
+          @if (view.balance !== d.received_amount && !d.swept_at) {
+            <nz-tag nzColor="gold">differs from received ({{ received() }})</nz-tag>
+          }
+        } @else {
+          <span class="rpc-problem">{{ view.error ?? 'Could not read' }}</span>
+        }
+      } @else if (onChainLoading()) {
+        <span class="muted">reading…</span>
+      }
+      <button nz-button nzType="text" nzSize="small" [nzLoading]="onChainLoading()" (click)="loadOnChain()"
+              nz-tooltip nzTooltipTitle="Read again" aria-label="Read the balance again">
+        <nz-icon nzType="reload" />
+      </button>
+    </div>
+
+    @if (d.check; as check) {
+      @if (check.status === 'waiting') {
+        <nz-alert class="block" nzType="info" nzShowIcon [nzMessage]="waitingTitle" [nzDescription]="waitingNote" />
+        <ng-template #waitingTitle>Check asked for by {{ check.requested_by }} at {{ check.requested_at | date: 'h:mm a' }}</ng-template>
+        <ng-template #waitingNote>
+          @if (watcherStale()) {
+            <strong>The {{ d.chain_name }} watcher is not running</strong>, so the check waits for it: start it and the
+            check runs on its first pass.
+          } @else {
+            The {{ d.chain_name }} watcher runs it on its next pass, usually within seconds. It rescans this address from
+            just before the deposit was opened and counts any payment not counted yet, by the time of its block.
+          }
+          @if (check.next_block && check.to_block) {
+            <div>Read up to block {{ check.next_block - 1 }} of {{ check.to_block }}.</div>
+          }
+          @if (check.error) {
+            <div class="rpc-problem">Last attempt failed: {{ check.error }}. It is tried again.</div>
+          }
+        </ng-template>
+      } @else {
+        <nz-alert class="block" [nzType]="check.counted && check.counted !== '0' ? 'success' : 'info'" nzShowIcon
+                  [nzMessage]="doneTitle" [nzDescription]="doneNote" />
+        <ng-template #doneTitle>
+          Checked by {{ check.requested_by }} at {{ check.checked_at | date: 'MMM d, h:mm a' }}:
+          @if (check.counted && check.counted !== '0') {
+            {{ amount(check.counted, d) }} {{ d.asset }} newly counted
+          } @else {
+            nothing new
+          }
+        </ng-template>
+        <ng-template #doneNote>
+          Blocks {{ check.from_block }} to {{ check.to_block }}: {{ check.found.length }} payment(s) to this address on the chain.
+          @if (check.from_balance && check.from_balance !== '0') {
+            {{ amount(check.from_balance, d) }} {{ d.asset }} was found only in the balance (sent through a contract).
+          }
+          @if (check.exact === false) {
+            The chain could not tell block times, so only recent blocks were read.
+          }
+        </ng-template>
+      }
+    }
+
+    @if (d.payments.length) {
+      <nz-table #payments [nzData]="d.payments" [nzShowPagination]="false" nzSize="small" [nzScroll]="{ x: '640px' }">
+        <thead>
+          <tr>
+            <th>Paid</th>
+            <th nzAlign="right">Amount</th>
+            <th>Transaction</th>
+            <th>Found by</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of payments.data; track $index) {
+            <tr>
+              <td class="nowrap">
+                @if (p.paid_at) {
+                  {{ p.paid_at | date: 'MMM d, y h:mm:ss a' }}
+                } @else {
+                  <span class="muted">unknown</span>
+                }
+                @if (p.source !== 'balance' && after(p.paid_at, d.expires_at)) {
+                  <nz-tag nzColor="orange">after the deadline</nz-tag>
+                }
+              </td>
+              <td nzAlign="right" class="nowrap"><strong>{{ amount(p.amount, d) }}</strong> {{ d.asset }}</td>
+              <td>
+                @if (p.tx_hash) {
+                  <a [href]="p.tx_url" target="_blank" rel="noopener"><code>{{ p.tx_hash.slice(0, 10) }}…{{ p.tx_hash.slice(-6) }}</code></a>
+                  @if (p.block_number) {
+                    <span class="muted"> block {{ p.block_number }}</span>
+                  }
+                } @else {
+                  <span class="muted">none: found in the balance</span>
+                }
+              </td>
+              <td><nz-tag [nzColor]="sources[p.source].color" nz-tooltip [nzTooltipTitle]="sources[p.source].hint">{{ sources[p.source].label }}</nz-tag></td>
+              <td>
+                @if (p.confirmed) {
+                  <nz-tag nzColor="green">confirmed</nz-tag>
+                } @else {
+                  <nz-tag nzColor="blue">confirming</nz-tag>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </nz-table>
+    } @else if (d.received_amount !== '0') {
+      <p class="muted">{{ received() }} {{ d.asset }} counted before payments were listed: <strong>Check payments</strong> lists them.</p>
+    } @else {
+      <p class="muted">No payment counted yet.</p>
+    }
+  </nz-card>
 
   <nz-card class="block" nzTitle="On chain">
     <nz-descriptions nzBordered [nzColumn]="1">

@@ -11,6 +11,8 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzSkeletonModule } from 'ng-zorro-antd/skeleton';
+import { NzTableModule } from 'ng-zorro-antd/table';
+import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 
 import { ReopenComponent } from '../../../../components/reopen/reopen.component';
@@ -21,7 +23,7 @@ import { DISCOUNT_STATUS, discountState, owed } from '../../../../modules/discou
 import { errorMessage } from '../../../../modules/error';
 import { live } from '../../../../modules/live';
 import { STATUS } from '../../../../modules/status';
-import { DepositInterface } from '../../../../services/api.interface';
+import { ChainViewInterface, DepositInterface } from '../../../../services/api.interface';
 import { AdminService } from '../../../../services/admin/admin.service';
 import { AuthService } from '../../../../services/auth/auth.service';
 
@@ -38,6 +40,8 @@ import { AuthService } from '../../../../services/auth/auth.service';
     NzIconModule,
     NzPopconfirmModule,
     NzSkeletonModule,
+    NzTableModule,
+    NzTooltipModule,
     NzTagModule,
     ReopenComponent
   ],
@@ -58,6 +62,20 @@ export class DetailComponent implements OnInit {
   protected readonly crediting = signal(false);
   protected readonly reopenOpen = signal(false);
   protected readonly releasing = signal(false);
+  protected readonly checking = signal(false);
+  /** The address's balance now, from the chain; read on opening, on demand and after a check. */
+  protected readonly onChain = signal<ChainViewInterface | null>(null);
+  protected readonly onChainLoading = signal(false);
+  /** The chain's watcher has not run for two minutes: a check waits for it. */
+  protected readonly watcherStale = computed(() => {
+    const seen = this.onChain()?.watcher_seen_at;
+    return !seen || Date.now() - new Date(seen).getTime() > 2 * 60_000;
+  });
+  protected readonly sources: Record<string, { label: string; color: string; hint: string }> = {
+    scan: { label: 'watcher', color: 'default', hint: 'Found by the watcher, block by block' },
+    check: { label: 'check', color: 'blue', hint: 'Found by a support check' },
+    balance: { label: 'balance', color: 'gold', hint: 'Found only in the address balance: sent through a contract, so no transaction of its own' }
+  };
   protected readonly deleting = signal(false);
   protected readonly deleteWarning = deleteWarning;
   private readonly router = inject(Router);
@@ -135,6 +153,47 @@ export class DetailComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    this.loadOnChain();
+  }
+
+  protected loadOnChain(): void {
+    this.onChainLoading.set(true);
+    this.adminService.onChain(this.id()).subscribe({
+      next: (view) => {
+        this.onChain.set(view);
+        this.onChainLoading.set(false);
+      },
+      error: () => this.onChainLoading.set(false)
+    });
+  }
+
+  /** Have the watcher rescan the address; the page follows the result as it reloads. */
+  protected check(): void {
+    this.checking.set(true);
+    this.adminService.check(this.id()).subscribe({
+      next: (deposit) => {
+        this.deposit.set(deposit);
+        this.checking.set(false);
+        this.message.info(`Check asked for: the ${deposit.chain_name} watcher runs it on its next pass.`);
+      },
+      error: (response: HttpErrorResponse) => {
+        this.checking.set(false);
+        this.message.error(errorMessage(response));
+      }
+    });
+  }
+
+  protected checkable(d: DepositInterface): boolean {
+    return ['pending', 'expired', 'detected', 'partial', 'review'].includes(d.internal_status);
+  }
+
+  /** `a` is a later moment than `b` (both ISO times; either missing is not later). */
+  protected after(a: string | null, b: string | null): boolean {
+    return !!a && !!b && new Date(a).getTime() > new Date(b).getTime();
+  }
+
+  protected amount(units: string | null, d: DepositInterface): string {
+    return units === null ? '0' : formatUnits(units, d.decimals);
   }
 
   /** `quiet`: a background reload, without the spinner. */
@@ -145,9 +204,19 @@ export class DetailComponent implements OnInit {
     }
     this.adminService.deposit(this.id()).subscribe({
       next: (deposit) => {
+        const wasWaiting = this.deposit()?.check?.status === 'waiting';
         this.deposit.set(deposit);
         this.error.set(null);
         this.loading.set(false);
+        if (wasWaiting && deposit.check?.status === 'done') {
+          this.loadOnChain();   // the check ran: the balance may read differently now
+          const counted = BigInt(deposit.check.counted ?? '0');
+          if (counted > 0n) {
+            this.message.success(`Check done: ${formatUnits(counted.toString(), deposit.decimals)} ${deposit.asset} newly counted.`);
+          } else {
+            this.message.info('Check done: nothing new on the chain.');
+          }
+        }
       },
       error: (response: HttpErrorResponse) => {
         this.error.set(errorMessage(response));

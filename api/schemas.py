@@ -24,6 +24,23 @@ PUBLIC_STATUS = {
 }
 
 
+def _chain_of(d: "Deposit"):
+    from .chain_sync import chain_for
+
+    return chain_for(d.chain, d.family)
+
+
+def deposit_decimals(d: "Deposit") -> int:
+    """The decimals of the deposit's coin: its own, else the chains' (the file's, or as the database
+    remembers them). One never known reads as 0: amounts in base units, never a crash."""
+    from .chain_sync import chain_for
+
+    if d.has("decimals") and d.decimals is not None:
+        return d.decimals
+    chain = chain_for(d.chain, d.family)
+    return chain.decimals(d.asset) if chain.lists(d.asset) else 0
+
+
 def utc(value: datetime | None) -> str | None:
     return value.isoformat() + "Z" if value else None
 
@@ -313,6 +330,46 @@ class ChainOut(BaseModel):
     assets: list[AssetOut]
 
 
+class TokenChangeOut(BaseModel):
+    contract: str
+    decimals: int
+    until: str                  # deposits opened before this keep this contract and decimals
+
+
+class NetworkAssetOut(BaseModel):
+    symbol: str
+    native: bool
+    contract: str | None        # None for the native coin
+    decimals: int | None        # None while a new token is not confirmed by its contract yet
+    # supported: in chains.yaml and confirmed; not supported: taken out of chains.yaml, kept for its
+    # deposits; refused: the file's decimals contradict the contract; unchecked: new or changed in the
+    # file, its contract not read yet (the RPC did not answer)
+    status: str
+    supported: bool
+    supported_since: str | None
+    supported_until: str | None
+    verified_at: str | None
+    problem: str | None         # why it is refused or unchecked
+    deposits: int               # deposits ever opened in it on this network
+    history: list[TokenChangeOut] = []
+
+
+class NetworkOut(BaseModel):
+    """A network chains.yaml lists or once listed, as the database keeps it."""
+    key: str
+    name: str
+    family: str
+    chain_id: int | None
+    confirmations: int
+    explorer: str
+    token_standard: str
+    supported: bool
+    supported_since: str | None
+    supported_until: str | None
+    deposits: int
+    assets: list[NetworkAssetOut]
+
+
 class ProductOut(BaseModel):
     value: str
     name: str
@@ -421,7 +478,7 @@ class DepositOut(BaseModel):
 
     @classmethod
     def from_deposit(cls, d: Deposit, project: dict[str, Any] | None, **extra: Any) -> "DepositOut":
-        chain = CHAINS[d.chain]
+        chain = _chain_of(d)
         return cls(
             id=d.id,
             account_id=d.account_id,
@@ -431,7 +488,7 @@ class DepositOut(BaseModel):
             chain_name=chain.name,
             asset=d.asset,
             standard=None if chain.is_native(d.asset) else chain.token_standard,
-            decimals=chain.decimals(d.asset),
+            decimals=deposit_decimals(d),
             address=d.address,
             address_url=chain.explorer_address(d.address),
             status=PUBLIC_STATUS[d.status],
@@ -468,6 +525,49 @@ class ProjectDepositOut(DepositOut):
         )
 
 
+class PaymentOut(BaseModel):
+    """One payment counted on a deposit."""
+
+    tx_hash: str | None          # None when it was found from the address's balance (sent through a contract)
+    tx_url: str | None
+    block_number: int | None
+    amount: str                  # base units
+    paid_at: str | None          # the block's time
+    source: str                  # scan, check (a support check) or balance
+    confirmed: bool
+
+
+class CheckFound(BaseModel):
+    tx_hash: str | None
+    amount: str
+    paid_at: str | None
+
+
+class CheckOut(BaseModel):
+    """A support check of the deposit's address, run by the chain's watcher."""
+
+    status: str                  # waiting (for the watcher) or done
+    requested_at: str
+    requested_by: str
+    checked_at: str | None
+    from_block: int | None
+    to_block: int | None
+    next_block: int | None = None   # while it runs: the next block it reads
+    exact: bool | None           # False: the chain could not tell block times, so recent blocks only
+    found: list[CheckFound]      # every payment on the chain in that range
+    counted: str | None          # newly counted by this check, base units
+    from_balance: str | None     # of which, found only in the balance
+    error: str | None
+
+
+class ChainView(BaseModel):
+    """The deposit's address as the chain sees it now."""
+
+    balance: str | None          # base units; None when the RPC could not be read
+    error: str | None
+    watcher_seen_at: str | None  # the chain's watcher last ran; None when it never did
+
+
 class AdminDepositOut(ProjectDepositOut):
     """Everything about a deposit, for support and operations."""
 
@@ -482,10 +582,24 @@ class AdminDepositOut(ProjectDepositOut):
     fee_tx_url: str | None
     sweep_tx_url: str | None
     sweep_hold: str | None
+    payments: list[PaymentOut] = []
+    check: CheckOut | None = None
+    # False: accepted when this deposit opened, not supported now (taken out of chains.yaml since)
+    asset_supported: bool = True
 
     @classmethod
     def from_deposit(cls, d: Deposit, project: dict[str, Any] | None, **extra: Any) -> "AdminDepositOut":
-        chain = CHAINS[d.chain]
+        chain = _chain_of(d)
+        check = d.check
+        if check:
+            check = CheckOut(
+                status=check["status"], requested_at=utc(check["requested_at"]), requested_by=check["requested_by"],
+                checked_at=utc(check.get("checked_at")), from_block=check.get("from_block"),
+                to_block=check.get("to_block"), next_block=check.get("next_block"), exact=check.get("exact"),
+                found=[CheckFound(tx_hash=f["tx_hash"], amount=f["amount"], paid_at=utc(f.get("paid_at")))
+                       for f in check.get("found") or []],
+                counted=check.get("counted"), from_balance=check.get("from_balance"), error=check.get("error"),
+            )
         return super().from_deposit(
             d, project,
             project_id=d.project_id,
@@ -499,6 +613,16 @@ class AdminDepositOut(ProjectDepositOut):
             fee_tx_url=chain.explorer_tx(d.fee_tx_hash) if d.fee_tx_hash else None,
             sweep_tx_url=chain.explorer_tx(d.sweep_tx_hash) if d.sweep_tx_hash else None,
             sweep_hold=d.sweep_hold,
+            payments=[
+                PaymentOut(
+                    tx_hash=p.get("tx_hash"), tx_url=chain.explorer_tx(p["tx_hash"]) if p.get("tx_hash") else None,
+                    block_number=p.get("block_number"), amount=p["amount"], paid_at=utc(p.get("paid_at")),
+                    source=p.get("source", "scan"), confirmed=bool(p.get("confirmed")),
+                )
+                for p in d.payments
+            ],
+            check=check,
+            asset_supported=d.chain in CHAINS and CHAINS[d.chain].lists(d.asset),
             **extra,
         )
 
@@ -621,5 +745,9 @@ class SweeperOut(BaseModel):
 
     counts: dict[str, int]     # waiting, topping_up, sweeping, held, swept
     sweepers: list[SweeperState]
-    queue: list[AdminDepositOut]         # credited, not swept yet, oldest first
-    recent: list[AdminDepositOut]        # latest sweeps, newest first
+    queue: list[AdminDepositOut]         # a page of the credited, not swept yet: held first, then oldest first
+    queue_page: int = 1
+    queue_size: int = 20
+    recent: list[AdminDepositOut]        # a page of the sweeps, newest first; counts["swept"] is the total
+    recent_page: int = 1
+    recent_size: int = 20

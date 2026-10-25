@@ -49,6 +49,12 @@ def mongo():
     hdb.use_client(None)
 
 
+@pytest.fixture(autouse=True)
+def no_chain_reads(monkeypatch):
+    """The API's start checks new tokens against their contracts: in tests, every contract agrees with the file."""
+    monkeypatch.setattr("api.chain_sync._verify", lambda chain, token: token.decimals)
+
+
 @pytest.fixture
 def client():
     from fastapi.testclient import TestClient

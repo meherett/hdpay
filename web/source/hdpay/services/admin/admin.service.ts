@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import { APIService } from '../api.service';
 import {
   AdminDefaultsInterface,
+  ChainViewInterface,
   ApiKeyInterface,
   ApiKeyKind,
   CreatedApiKeyInterface,
@@ -13,6 +14,7 @@ import {
   DepositListInterface,
   EventInterface,
   FunderBalancesInterface,
+  NetworkInterface,
   ProjectFieldsInterface,
   ProjectInterface,
   ReopenInterface,
@@ -59,8 +61,10 @@ export class AdminService extends APIService {
   }
 
   /** Sweep queue, recent sweeps and each chain's sweeper check-in. */
-  public sweeper(): Observable<SweeperInterface> {
-    return this.collection<SweeperInterface>(undefined, '/sweeper');
+  /** Which page of the queue and of Recently swept to list. */
+  public sweeper(queue = { page: 1, size: 10 }, recent = { page: 1, size: 10 }): Observable<SweeperInterface> {
+    const query = `queue_page=${queue.page}&queue_size=${queue.size}&recent_page=${recent.page}&recent=${recent.size}`;
+    return this.collection<SweeperInterface>(undefined, `/sweeper?${query}`);
   }
 
   /** Support action: let the sweeper retry a held deposit, after the cause was checked. */
@@ -71,6 +75,16 @@ export class AdminService extends APIService {
   /** Back to partial with a fresh window, so the address is watched for the rest again. */
   public reopen(depositId: string, body: ReopenInterface = {}): Observable<DepositInterface> {
     return this.create<DepositInterface>(body, undefined, `/deposits/${id(depositId)}/reopen`);
+  }
+
+  /** Support: have the chain's watcher rescan the address and count any payment it missed. */
+  public check(depositId: string): Observable<DepositInterface> {
+    return this.create<DepositInterface>({}, undefined, `/deposits/${id(depositId)}/check`);
+  }
+
+  /** The address's balance now, read from the chain, and when its watcher last ran. */
+  public onChain(depositId: string): Observable<ChainViewInterface> {
+    return this.collection<ChainViewInterface>(undefined, `/deposits/${id(depositId)}/chain`);
   }
 
   /** Support action for an underpaid deposit, after a person checked it. */
@@ -131,6 +145,11 @@ export class AdminService extends APIService {
   /** This year's fee funders with their live balance on each chain. Slow: it asks each RPC. */
   public projectFunders(projectId: string): Observable<FunderBalancesInterface[]> {
     return this.collection<FunderBalancesInterface[]>(undefined, `/projects/${id(projectId)}/funders`);
+  }
+
+  /** Every network and coin chains.yaml lists or once listed, supported now or not. */
+  public networks(): Observable<NetworkInterface[]> {
+    return this.collection<NetworkInterface[]>(undefined, '/networks');
   }
 
   // ---- users

@@ -14,6 +14,50 @@ export interface DiscountInterface {
   status: 'active' | 'kept' | 'lapsed' | 'honored';
 }
 
+/** One payment counted on a deposit. */
+export interface PaymentInterface {
+  /** null when it was found in the address's balance (coins sent through a contract) */
+  tx_hash: string | null;
+  tx_url: string | null;
+  block_number: number | null;
+  /** base units */
+  amount: string;
+  /** the block's time */
+  paid_at: string | null;
+  /** scan (the watcher), check (a support check) or balance */
+  source: 'scan' | 'check' | 'balance';
+  confirmed: boolean;
+}
+
+/** A support check of the deposit's address, run by the chain's watcher. */
+export interface CheckInterface {
+  status: 'waiting' | 'done';
+  requested_at: string;
+  requested_by: string;
+  checked_at: string | null;
+  from_block: number | null;
+  to_block: number | null;
+  /** while it runs: the next block it reads */
+  next_block: number | null;
+  /** false: the chain could not tell block times, so only recent blocks were read */
+  exact: boolean | null;
+  /** every payment on the chain in that range */
+  found: { tx_hash: string | null; amount: string; paid_at: string | null }[];
+  /** newly counted by this check, base units */
+  counted: string | null;
+  from_balance: string | null;
+  error: string | null;
+}
+
+/** The deposit's address as the chain sees it now. */
+export interface ChainViewInterface {
+  /** base units; null when the chain could not be read */
+  balance: string | null;
+  error: string | null;
+  /** when the chain's watcher last ran; null when it never did */
+  watcher_seen_at: string | null;
+}
+
 export interface DepositInterface {
   id: string;
   project_id: string;
@@ -62,6 +106,11 @@ export interface DepositInterface {
   expires_in_seconds: number;
   confirmed_at: string | null;
   discount: DiscountInterface | null;
+  /** every payment counted, oldest first */
+  payments: PaymentInterface[];
+  /** false: the coin was taken out of chains.yaml after this deposit opened */
+  asset_supported: boolean;
+  check: CheckInterface | null;
 }
 
 export interface DepositListInterface {
@@ -182,10 +231,14 @@ export interface SweeperStateInterface {
 export interface SweeperInterface {
   counts: Record<SweepStage | 'swept', number>;
   sweepers: SweeperStateInterface[];
-  /** Credited deposits not swept yet, oldest first. */
+  /** A page of the credited deposits not swept yet: held first, then oldest first. */
   queue: DepositInterface[];
-  /** Latest sweeps, newest first. */
+  queue_page: number;
+  queue_size: number;
+  /** A page of the sweeps, newest first; counts.swept is their total. */
   recent: DepositInterface[];
+  recent_page: number;
+  recent_size: number;
 }
 
 export interface StatsInterface {
@@ -214,6 +267,51 @@ export interface ChainInterface {
   family: string;
   confirmations: number;
   assets: AssetInterface[];
+}
+
+/** A contract and decimals a token had before; deposits opened before `until` keep them. */
+export interface TokenChangeInterface {
+  contract: string;
+  decimals: number;
+  until: string;
+}
+
+/**
+ * supported: in chains.yaml and confirmed by its contract; not supported: taken out of chains.yaml,
+ * kept for its deposits; refused: the file's decimals contradict the contract; unchecked: new or
+ * changed, its contract not read yet.
+ */
+export type NetworkAssetStatus = 'supported' | 'not supported' | 'refused' | 'unchecked';
+
+export interface NetworkAssetInterface {
+  symbol: string;
+  native: boolean;
+  contract: string | null;
+  decimals: number | null;
+  status: NetworkAssetStatus;
+  supported: boolean;
+  supported_since: string | null;
+  supported_until: string | null;
+  verified_at: string | null;
+  problem: string | null;
+  deposits: number;
+  history: TokenChangeInterface[];
+}
+
+/** A network chains.yaml lists or once listed. */
+export interface NetworkInterface {
+  key: string;
+  name: string;
+  family: string;
+  chain_id: number | null;
+  confirmations: number;
+  explorer: string;
+  token_standard: string;
+  supported: boolean;
+  supported_since: string | null;
+  supported_until: string | null;
+  deposits: number;
+  assets: NetworkAssetInterface[];
 }
 
 // ---- users and sign-in

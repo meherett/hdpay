@@ -87,8 +87,23 @@
 
   <section class="section">
     <h2>Queue</h2>
-    <p class="muted">Credited deposits not swept yet, oldest first.</p>
-    <nz-table #queue [nzData]="d.queue" [nzShowPagination]="false" [nzNoResult]="emptyQueue" [nzScroll]="{ x: '1100px' }">
+    <p class="muted">Credited deposits not swept yet: held ones first, then oldest first.</p>
+    <nz-table
+      #queue
+      [nzData]="d.queue"
+      [nzFrontPagination]="false"
+      [nzTotal]="queueTotal(d)"
+      [nzPageIndex]="queuePage()"
+      [nzPageSize]="queueSize()"
+      [nzShowPagination]="queueTotal(d) > 0"
+      nzShowSizeChanger
+      [nzPageSizeOptions]="[10, 20, 50, 100]"
+      [nzShowTotal]="queueTotalTemplate"
+      [nzLoading]="queueLoading()"
+      (nzPageIndexChange)="onQueuePage($event)"
+      (nzPageSizeChange)="onQueueSize($event)"
+      [nzNoResult]="emptyQueue"
+      [nzScroll]="{ x: '1100px' }">
       <thead>
         <tr>
           <th nzWidth="110px">Credited</th>
@@ -158,8 +173,23 @@
 
   <section class="section">
     <h2>Recently swept</h2>
-    <p class="muted">The latest deposits moved to the treasury, newest first.</p>
-    <nz-table #recent [nzData]="d.recent" [nzShowPagination]="false" [nzNoResult]="emptyRecent" [nzScroll]="{ x: '900px' }">
+    <p class="muted">Deposits moved to the treasury, newest first.</p>
+    <nz-table
+      #recent
+      [nzData]="d.recent"
+      [nzFrontPagination]="false"
+      [nzTotal]="d.counts.swept"
+      [nzPageIndex]="recentPage()"
+      [nzPageSize]="recentSize()"
+      [nzShowPagination]="d.counts.swept > 0"
+      nzShowSizeChanger
+      [nzPageSizeOptions]="[10, 20, 50, 100]"
+      [nzShowTotal]="recentTotal"
+      [nzLoading]="recentLoading()"
+      (nzPageIndexChange)="onRecentPage($event)"
+      (nzPageSizeChange)="onRecentSize($event)"
+      [nzNoResult]="emptyRecent"
+      [nzScroll]="{ x: '900px' }">
       <thead>
         <tr>
           <th nzWidth="160px">Swept</th>
@@ -205,6 +235,12 @@
 
 <ng-template #emptyQueue>
   <nz-empty nzNotFoundImage="simple" nzNotFoundContent="Nothing waiting: every credited deposit has been swept." />
+</ng-template>
+<ng-template #queueTotalTemplate let-total let-range="range">
+  {{ range[0] }}–{{ range[1] }} of {{ total }} waiting to be swept
+</ng-template>
+<ng-template #recentTotal let-total let-range="range">
+  {{ range[0] }}–{{ range[1] }} of {{ total }} swept
 </ng-template>
 <ng-template #emptyRecent>
   <nz-empty nzNotFoundImage="simple" nzNotFoundContent="No sweeps yet." />

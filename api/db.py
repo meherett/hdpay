@@ -161,6 +161,30 @@ class Deposit:
         Replace it whole (deposit.discount = {...}) so the change is saved."""
         return self._doc.get("discount")
 
+    @property
+    def payments(self) -> list[dict[str, Any]]:
+        """Every payment counted, oldest first: {tx_hash, block_number, amount, paid_at, source,
+        confirmed}. A copy: assign a new list (deposit.payments = [...]) so the change is saved."""
+        return list(self._doc.get("payments") or [])
+
+    @property
+    def check(self) -> dict[str, Any] | None:
+        """A support check of the address, asked for in the admin and run by the chain's watcher."""
+        return self._doc.get("check")
+
+    @property
+    def counted_to(self) -> int | None:
+        """Every transfer to the address up to this block is already in received_amount: a balance was
+        read there, or, for a deposit from before payments were listed, it is its last counted block."""
+        marks = [self._doc.get("balance_block"), self._doc.get("legacy_counted_to")]
+        if "payments" not in self._doc and int(self._doc.get("received_amount") or 0) > 0:
+            marks.append(self._doc.get("block_number"))
+        marks = [m for m in marks if m is not None]
+        return max(marks) if marks else None
+
+    def has(self, name: str) -> bool:
+        return name in self._doc
+
     def __getattr__(self, name: str) -> Any:
         try:
             value = self._doc[name]

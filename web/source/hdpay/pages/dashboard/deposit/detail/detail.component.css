@@ -18,3 +18,27 @@ code {
 .hidden {
   display: none;
 }
+
+/* the address's balance now, next to what was counted */
+.chain-balance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+
+.chain-balance nz-tag {
+  margin: 0;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* why the chain could not be read */
+.rpc-problem {
+  color: var(--hd-danger);
+  font-size: 13px;
+}
