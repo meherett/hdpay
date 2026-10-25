@@ -52,14 +52,14 @@ x-watcher: &watcher
   build: { context: .., target: watcher }
   image: ghcr.io/meherett/hdpay-watcher:latest
 
-x-sweeper: &sweeper
-  <<: *service
-  build: { context: .., target: sweeper }
-  image: ghcr.io/meherett/hdpay-sweeper:latest
-  env_file:
-    - ../envs/common.env
-    - path: ../envs/sweeper.env
-      required: false   # without it the sweeper stops at once, saying HDPAY_MASTER_XPRV is missing
+#x-sweeper: &sweeper
+#  <<: *service
+#  build: { context: .., target: sweeper }
+#  image: ghcr.io/meherett/hdpay-sweeper:latest
+#  env_file:
+#    - ../envs/common.env
+#    - path: ../envs/sweeper.env
+#      required: false   # without it the sweeper stops at once, saying HDPAY_MASTER_XPRV is missing
 
 services:
   api:
@@ -140,21 +140,21 @@ services:
 #    <<: *watcher
 #    command: ["python", "-m", "watcher", "--chain", "sepolia"]
 
-#  watcher-bsc:
-#    <<: *watcher
-#    command: ["python", "-m", "watcher", "--chain", "bsc"]
-
-  watcher-bsc-testnet:
+  watcher-bsc:
     <<: *watcher
-    command: ["python", "-m", "watcher", "--chain", "bsc-testnet"]
+    command: ["python", "-m", "watcher", "--chain", "bsc"]
 
-#  watcher-tron:
+#  watcher-bsc-testnet:
 #    <<: *watcher
-#    command: ["python", "-m", "watcher", "--chain", "tron"]
+#    command: ["python", "-m", "watcher", "--chain", "bsc-testnet"]
 
-  watcher-tron-nile:
+  watcher-tron:
     <<: *watcher
-    command: ["python", "-m", "watcher", "--chain", "tron-nile"]
+    command: ["python", "-m", "watcher", "--chain", "tron"]
+
+#  watcher-tron-nile:
+#    <<: *watcher
+#    command: ["python", "-m", "watcher", "--chain", "tron-nile"]
 
 #  sweeper-ethereum:
 #    <<: *sweeper
@@ -168,17 +168,17 @@ services:
 #    <<: *sweeper
 #    command: ["python", "-m", "sweeper", "--chain", "bsc"]
 
-  sweeper-bsc-testnet:
-    <<: *sweeper
-    command: ["python", "-m", "sweeper", "--chain", "bsc-testnet"]
+#  sweeper-bsc-testnet:
+#    <<: *sweeper
+#    command: ["python", "-m", "sweeper", "--chain", "bsc-testnet"]
 
 #  sweeper-tron:
 #    <<: *sweeper
 #    command: ["python", "-m", "sweeper", "--chain", "tron"]
 
-  sweeper-tron-nile:
-    <<: *sweeper
-    command: ["python", "-m", "sweeper", "--chain", "tron-nile"]
+#  sweeper-tron-nile:
+#    <<: *sweeper
+#    command: ["python", "-m", "sweeper", "--chain", "tron-nile"]
 
   # The example shop, off by default: --profile example.
   example-api:
@@ -213,17 +213,17 @@ services:
       EXAMPLE_API_URL: http://example-api:8400
 
   # Off by default: Atlas is used for now. Start it with --profile mongo.
-  mongo:
-    image: mongo:8
-    profiles: ["mongo"]
-    restart: unless-stopped
-    volumes:
-      - mongo-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+#  mongo:
+#    image: mongo:8
+#    profiles: ["mongo"]
+#    restart: unless-stopped
+#    volumes:
+#      - mongo-data:/data/db
+#    healthcheck:
+#      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+#      interval: 30s
+#      timeout: 5s
+#      retries: 3
 
 networks:
   default:
