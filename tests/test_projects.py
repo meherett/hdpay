@@ -48,8 +48,6 @@ def test_a_new_project_gets_a_random_number_and_waits_for_its_keys(client, admin
     ({"products": [{"value": "a", "name": "A", "colour": "blue"}]}, "Extra inputs"),
     ({"treasury": {"evm": "0x123"}}, "not a valid evm address"),
     ({"treasury": {"tron": EVM_TREASURY}}, "not a valid tron address"),
-    ({"chains": {"solana": ["SOL"]}}, "unknown chain"),
-    ({"chains": {"sepolia": ["USDT"]}}, "Sepolia has no USDT"),
     ({"allowed_ips": ["not-an-ip"]}, "not an IP address"),
     ({"amount_tolerance_bps": -1}, "greater than or equal"),
     ({"website": "example.com"}, "not a web address"),
@@ -59,6 +57,16 @@ def test_a_new_project_gets_a_random_number_and_waits_for_its_keys(client, admin
 def test_project_fields_are_checked(client, admin, fields, problem):
     reply = create(client, admin, **fields)
     assert reply.status_code == 422 and problem in reply.text
+
+
+def test_a_coin_taken_out_of_the_chains_file_does_not_stop_a_save(client, admin, mongo):
+    # USDC on BNB Smart Chain chosen once, then taken out of chains.yaml: the admin sends it back on every save
+    project = create(client, admin).json()
+    mongo.projects.update_one({"_id": project["id"]}, {"$set": {"chains": {"sepolia": ["ETH", "USDX"], "gone": ["GONE"]}}})
+    saved = client.patch(f"/admin/projects/{project['id']}", headers=admin,
+                         json={"name": "Renamed", "chains": {"sepolia": ["ETH", "USDX"], "gone": ["GONE"]}})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["name"] == "Renamed" and saved.json()["chains"] == {"sepolia": ["ETH"]}   # what is listed stays
 
 
 def test_keys_activate_the_project_and_cannot_change_once_used(client, admin, mongo):

@@ -229,18 +229,19 @@ class ProjectFields(BaseModel):
     @field_validator("chains")
     @classmethod
     def _chains(cls, chains: dict[str, list[str]] | None) -> dict[str, list[str]] | None:
+        """The networks and coins the project takes, in the chains file's order. One taken out of
+        chains.yaml since the project chose it is dropped: the project kept it, and the admin sends back
+        what it has, so refusing it would make the project impossible to save."""
         if chains is None:
             return None
         out = {}
         for key, assets in chains.items():
             chain = CHAINS.get(key)
             if chain is None:
-                raise ValueError(f"unknown chain {key!r}, expected one of {', '.join(CHAINS)}")
-            unknown = [a for a in assets if a not in chain.assets()]
-            if unknown:
-                raise ValueError(f"{chain.name} has no {', '.join(unknown)}")
-            if assets:
-                out[key] = [a for a in chain.assets() if a in assets]
+                continue
+            listed = [a for a in chain.assets() if a in assets]
+            if listed:
+                out[key] = listed
         return out
 
 
