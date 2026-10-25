@@ -120,6 +120,37 @@ def test_reopen_defaults_to_the_projects_window(client, admin, mongo, project):
     assert 29 * 60 < reply["expires_in_seconds"] <= 30 * 60 and reply["expected_amount"] == "10000000"
 
 
+def test_an_expired_deposit_reopens_as_pending_with_a_new_window(client, admin, mongo, project):
+    mongo.projects.update_one({"_id": project["_id"]}, {"$set": {"deposit_ttl_minutes": 60}})
+    d = open_deposit(client, mongo, project, expected_amount=10_000_000)
+    set_fields(d["id"], status=Status.EXPIRED, late=True, expires_at=utcnow() - timedelta(hours=3),
+               window_ends_at=utcnow() - timedelta(hours=3))
+    reply = client.post(f"/admin/deposits/{d['id']}/reopen", headers=admin).json()
+    assert (reply["internal_status"], reply["expected_amount"]) == ("pending", "10000000")
+    assert 59 * 60 < reply["expires_in_seconds"] <= 60 * 60                 # the project's payment window
+    stored = mongo.deposits.find_one({"_id": d["id"]})
+    assert stored["window_ends_at"] == stored["expires_at"] and stored["late"] is False   # a payment now is on time
+    assert mongo.events.find_one({"type": "deposit.reopened"})["deposit"]["id"] == d["id"]
+    # support's own window, for a customer who needs longer
+    set_fields(d["id"], status=Status.EXPIRED)
+    longer = client.post(f"/admin/deposits/{d['id']}/reopen", headers=admin, json={"minutes": 1440}).json()
+    assert 1439 * 60 < longer["expires_in_seconds"] <= 1440 * 60
+
+
+def test_an_expired_any_amount_deposit_reopens_too(client, admin, mongo, project):
+    d = open_deposit(client, mongo, project)        # no expected amount: any amount goes
+    set_fields(d["id"], status=Status.EXPIRED)
+    reply = client.post(f"/admin/deposits/{d['id']}/reopen", headers=admin)
+    assert reply.status_code == 200 and reply.json()["internal_status"] == "pending"
+
+
+def test_a_deposit_is_found_by_its_address(client, admin, mongo, project):
+    d = open_deposit(client, mongo, project)
+    open_deposit(client, mongo, project, account_id="99")
+    found = client.get("/admin/deposits", headers=admin, params={"search": d["address"].lower()}).json()
+    assert [row["id"] for row in found["items"]] == [d["id"]]
+
+
 def test_the_admin_does_not_open_deposits(client, admin, mongo, project):
     made = client.post("/admin/deposits", headers=admin,
                        json={"project_id": project["_id"], "account_id": "5", "chain": "sepolia", "asset": "ETH", "product": "10k"})

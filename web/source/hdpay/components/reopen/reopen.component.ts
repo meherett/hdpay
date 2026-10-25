@@ -23,8 +23,9 @@ import { AdminService } from '../../services/admin/admin.service';
 const MAX_MINUTES = 7 * 24 * 60;
 
 /**
- * Reopen an underpaid deposit in review: support sets what the customer still has to send and how
- * long the address waits for it. Open it by setting `deposit`; it emits `reopened` or `closed`.
+ * Reopen a deposit: an underpaid one in review (back to partial, waiting for the rest), or an expired
+ * one (back to pending, with a new payment window). Support sets what the customer has to send and
+ * how long the address waits for it. Open it by setting `deposit`; it emits `reopened` or `closed`.
  */
 @Component({
   selector: 'hdpay-reopen',
@@ -71,12 +72,16 @@ export class ReopenComponent {
     keep_discount: [false]
   });
 
-  /** HDPAY_REMAINDER_WINDOW_MINUTES, the starting countdown. */
-  private defaultMinutes = 30;
+  /** The starting countdown: the remainder window for one in review, the payment window for an expired one. */
+  private remainderMinutes = 30;
+  private paymentMinutes = 30;
 
   constructor() {
     this.adminService.defaults().subscribe({
-      next: (defaults) => (this.defaultMinutes = defaults.remainder_window_minutes),
+      next: (defaults) => {
+        this.remainderMinutes = defaults.remainder_window_minutes;
+        this.paymentMinutes = defaults.deposit_ttl_minutes;
+      },
       error: () => undefined   // keep 30; the server still checks the value
     });
 
@@ -98,17 +103,25 @@ export class ReopenComponent {
           this.error.set(null);
           // a discount that still runs counts anyway: ticked, and not to be changed
           const running = !!d.discount && d.discount.status === 'active' && !discountEnded(d);
+          const minutes = this.expired(d) ? this.paymentMinutes : this.remainderMinutes;
           this.form.reset(
-            { product: null, remaining: null, minutes: this.defaultMinutes, keep_discount: running },
+            { product: null, remaining: null, minutes, keep_discount: running },
             { emitEvent: false }
           );
+          // an expired deposit for any amount has nothing to ask for: only a new window
+          const remaining = this.form.controls['remaining'];
+          if (this.anyAmount(d)) {
+            remaining.disable({ emitEvent: false });
+          } else {
+            remaining.enable({ emitEvent: false });
+          }
           const keep = this.form.controls['keep_discount'];
           if (running) {
             keep.disable({ emitEvent: false });
           } else {
             keep.enable({ emitEvent: false });
           }
-          this.window.set(this.presets.some((p) => p.minutes === this.defaultMinutes) ? this.defaultMinutes : 'custom');
+          this.window.set(this.presets.some((p) => p.minutes === minutes) ? minutes : 'custom');
           this.form.controls['remaining'].setValue(this.shortfall(d));
           this.loadProducts(d);
         });
@@ -158,6 +171,16 @@ export class ReopenComponent {
     return formatUnits((rest > 0n ? rest : 0n).toString(), d.decimals);
   }
 
+  /** Expired with nothing received: it goes back to pending, with a new payment window. */
+  protected expired(d: DepositInterface): boolean {
+    return d.internal_status === 'expired';
+  }
+
+  /** An expired deposit that accepts any amount: no amount to set. */
+  protected anyAmount(d: DepositInterface): boolean {
+    return this.expired(d) && !d.expected_amount;
+  }
+
   /** Received + remaining, as the new expected total; null while the amount is not valid. */
   protected newTotal(d: DepositInterface): string | null {
     const remaining = parseUnits(String(this.form.value.remaining ?? ''), d.decimals);
@@ -189,7 +212,7 @@ export class ReopenComponent {
       revealErrors(this.form);
       return;
     }
-    const remaining = parseUnits(String(this.form.value.remaining), d.decimals);
+    const remaining = this.anyAmount(d) ? undefined : parseUnits(String(this.form.value.remaining), d.decimals);
     if (remaining === null || remaining === '0') {
       this.error.set(`Enter a positive amount with at most ${d.decimals} decimal places.`);
       return;

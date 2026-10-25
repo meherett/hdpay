@@ -310,3 +310,17 @@ def test_a_balance_that_cannot_be_read_keeps_it(chain, monkeypatch):
     old = expired_long_ago(chain, 25)          # no balance known: the stub cannot say
     catch_up(chain)
     assert get(old) is not None
+
+
+def test_by_default_an_expired_deposit_is_kept_for_15_days(chain, monkeypatch):
+    from api.config import Settings
+
+    assert Settings.model_fields["expired_delete_after_hours"].default == 360
+    chain.balances[("TDeposit0", "USDT")] = 0
+    monkeypatch.setattr(core.settings, "expired_delete_after_hours", 360)
+    kept = expired_long_ago(chain, 14 * 24)
+    catch_up(chain)
+    assert get(kept) is not None                      # 14 days: still kept, still watched
+    get_db().deposits.update_one({"_id": kept}, {"$set": {"expires_at": utcnow() - timedelta(days=15, minutes=1)}})
+    catch_up(chain, loops=2)
+    assert get(kept) is None                          # 15 days: deleted

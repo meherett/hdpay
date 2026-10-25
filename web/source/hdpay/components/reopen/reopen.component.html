@@ -11,6 +11,15 @@
         <nz-alert class="block" nzType="error" nzShowIcon [nzMessage]="message" />
       }
 
+      @if (expired(d)) {
+        <nz-alert
+          class="block"
+          nzType="info"
+          nzShowIcon
+          nzMessage="Back to pending"
+          nzDescription="The same address waits for the payment again, with a new countdown: a payment in it is on time, as for a new address. The project is sent deposit.reopened to tell the customer." />
+      }
+
       @if (endedDiscount(d) && d.discount; as discount) {
         <nz-alert
           class="block"
@@ -44,9 +53,9 @@
           </nz-form-item>
         }
 
-        <nz-form-item>
+        <nz-form-item [hidden]="anyAmount(d)">
           <div class="label-row">
-            <label for="reopen_remaining">Remaining</label>
+            <label for="reopen_remaining">{{ expired(d) ? 'Amount to pay' : 'Remaining' }}</label>
             @if (newTotal(d); as total) {
               <span class="hint">Total <strong>{{ total }} {{ d.asset }}</strong></span>
             }

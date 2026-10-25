@@ -722,12 +722,13 @@ def credit_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB):
 
 @router.post("/deposits/{deposit_id}/reopen", response_model=AdminDepositOut)
 def reopen_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB, body: ReopenDeposit | None = None):
-    """Support action: give an underpaid deposit in review a fresh window for the rest.
+    """Support action: give a deposit a fresh window, the project gets deposit.reopened to pass on.
 
-    The deposit goes back to partial, so the watcher watches its address again, and the project gets
-    a deposit.reopened event to pass on to its customer. Support may set the remaining amount (the
-    expected amount becomes received + remaining), the window and the product; they default to the
-    current shortfall, the project's remainder window and the current product.
+    In review (underpaid, the rest never came): back to partial, waiting for the rest. Expired (nothing
+    came in its window): back to pending, waiting for the payment as if the address were new, judged
+    on time against the new window. Support may set the remaining amount (the expected amount becomes
+    received + remaining), the window and the product; they default to the current shortfall, the
+    project's remainder window (review) or payment window (expired), and the current product.
 
     A different priced product brings its price: the deposit expects it (less its discount, by the same
     percent, while that counts). A product discount that ended before the deposit was paid is due in full:
@@ -737,9 +738,10 @@ def reopen_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB, body: Reo
     body = body or ReopenDeposit()
     deposit = _deposit_or_404(db, deposit_id, admin)
     project = get_project(db, deposit.project_id)
-    if deposit.status != Status.REVIEW:
-        raise HTTPException(409, f"deposit is {deposit.status.value}, not review")
-    if not deposit.expected_amount:
+    if deposit.status not in (Status.REVIEW, Status.EXPIRED):
+        raise HTTPException(409, f"deposit is {deposit.status.value}: only one in review or expired can be reopened")
+    expired = deposit.status == Status.EXPIRED
+    if not deposit.expected_amount and not expired:
         raise HTTPException(409, "deposit accepts any amount, so there is no rest to wait for")
     if body.product is not None:
         listed = {p["value"]: p for p in (project or {}).get("products") or []}
@@ -768,9 +770,16 @@ def reopen_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB, body: Reo
         deposit.expected_amount = str(int(deposit.received_amount) + int(body.remaining_amount))
     # what it holds already passed its confirmations; a reorg of the rest rolls back to it
     deposit.confirmed_amount = deposit.received_amount
-    minutes = body.minutes or setting(project or {}, "remainder_window_minutes")
-    deposit.expires_at = utcnow() + timedelta(minutes=minutes)
-    deposit.status = Status.PARTIAL
+    if expired:
+        # a new payment window: a payment in it is on time, as for a new address
+        minutes = body.minutes or setting(project or {}, "deposit_ttl_minutes")
+        deposit.expires_at = deposit.window_ends_at = utcnow() + timedelta(minutes=minutes)
+        deposit.late = False
+        deposit.status = Status.PENDING
+    else:
+        minutes = body.minutes or setting(project or {}, "remainder_window_minutes")
+        deposit.expires_at = utcnow() + timedelta(minutes=minutes)
+        deposit.status = Status.PARTIAL
     deposit.save(db)
     notify(db, deposit, "deposit.reopened", project)
     return AdminDepositOut.from_deposit(deposit, project)

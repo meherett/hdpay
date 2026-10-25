@@ -228,7 +228,11 @@ export class DetailComponent implements OnInit {
   protected onReopened(deposit: DepositInterface): void {
     this.reopenOpen.set(false);
     this.deposit.set(deposit);
-    this.message.success('Reopened: the address is watched for the rest again, and the project was sent deposit.reopened.');
+    this.message.success(
+      deposit.internal_status === 'pending'
+        ? 'Reopened: pending again with a new countdown, and the project was sent deposit.reopened.'
+        : 'Reopened: the address is watched for the rest again, and the project was sent deposit.reopened.'
+    );
   }
 
   protected credit(): void {

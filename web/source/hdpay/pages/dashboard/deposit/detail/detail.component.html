@@ -62,6 +62,21 @@
     </ng-template>
   }
 
+  @if (d.internal_status === 'expired') {
+    <nz-alert
+      class="block"
+      nzType="warning"
+      nzShowIcon
+      nzMessage="Expired: nothing came in time"
+      [nzDescription]="expiredNote"
+      [nzAction]="expiredActions" />
+    <ng-template #expiredNote>
+      The address is still watched, so a payment sent now is still found (marked late). If the customer says they
+      paid, use <strong>Check payments</strong> below to rescan the address on the chain. To let them pay now,
+      <strong>Reopen</strong> it: back to pending, with a new countdown.
+    </ng-template>
+  }
+
   @if (d.internal_status === 'partial') {
     <nz-alert
       class="block"
@@ -366,6 +381,15 @@
     <nz-icon nzType="reload" />
     Release
   </button>
+</ng-template>
+
+<ng-template #expiredActions>
+  <div class="review-actions" [class.hidden]="!auth.isAdmin()">
+    <button nz-button nzSize="small" (click)="reopenOpen.set(true)">
+      <nz-icon nzType="redo" />
+      Reopen
+    </button>
+  </div>
 </ng-template>
 
 <ng-template #reviewActions>
