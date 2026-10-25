@@ -59,6 +59,7 @@ CHECK_SECONDS_PER_PASS = 20
 # a payment is looked for from a little before its deposit was opened (clocks and block times drift)
 SKIP_MARGIN = timedelta(minutes=10)
 BALANCE_CHECK_EVERY_LOOPS = 12
+DELETE_PER_PASS = 50   # expired deposits deleted per pass at most: each costs one balance read
 
 Projects = dict[str, dict[str, Any]]
 
@@ -441,7 +442,51 @@ def run_once(db: Database, scanner: Scanner, loops: int) -> bool:
     for d in [*watched.values(), *others]:
         if d.status != before[d.id]:
             notify_status(db, d, projects.get(d.project_id))
+    if end == latest:
+        delete_expired(db, scanner, latest, watched, block_time, projects)
     return end >= latest
+
+
+def deletable(d: Deposit, now: datetime) -> bool:
+    """Expired with nothing received, and long enough ago (HDPAY_EXPIRED_DELETE_AFTER_HOURS; 0: never)."""
+    hours = settings.expired_delete_after_hours
+    return (
+        hours > 0 and d.status == Status.EXPIRED and int(d.received_amount) == 0 and not d.payments
+        and not (d.check and d.check.get("status") == "waiting")
+        and d.expires_at <= now - timedelta(hours=hours)
+    )
+
+
+def delete_expired(db: Database, scanner: Scanner, latest: int, watched: dict[str, Deposit], block_time,
+                   projects: Projects) -> list[Deposit]:
+    """Delete the expired deposits that never received anything, after one last look at their balance:
+    a deposit that holds something after all is counted (detected) and kept. Only once caught up, so
+    every block up to the head was scanned first. Returns the deleted ones."""
+    now, deleted = utcnow(), []
+    for address, d in watched.items():
+        if len(deleted) >= DELETE_PER_PASS:
+            break
+        if not deletable(d, now):
+            continue
+        try:
+            read = scanner.balance_covering(address, d.asset, latest, (t := deposit_token(scanner.chain, d)) and t.contract)
+        except Exception as exc:
+            log.warning("deposit %s: its balance could not be read (%s); deleted on a later pass", d.id, rpc_problem(exc))
+            continue
+        if read is None:
+            continue   # a balance this chain cannot read: kept, never deleted unseen
+        if read[0] > 0:
+            if count_balance(scanner, address, d, latest, block_time):
+                d.save(db)
+                notify_status(db, d, projects.get(d.project_id))
+            continue
+        # only if nothing changed it meanwhile (a support check, a payment)
+        gone = db.deposits.delete_one({"_id": d.id, "status": Status.EXPIRED.value, "received_amount": "0"})
+        if gone.deleted_count:
+            notify(db, d, "deposit.deleted", projects.get(d.project_id))   # from the copy in hand
+            deleted.append(d)
+            log.info("deposit %s (%s) expired %s with nothing received: deleted", d.id, d.address, d.expires_at)
+    return deleted
 
 
 def run(scanner: Scanner, build=None) -> None:

@@ -92,7 +92,7 @@ A payment carries two: `internal_status` for your backend, and `status`, which y
 | internal_status | status | Meaning |
 |---|---|---|
 | `pending` | `pending` | Address issued, waiting for payment. |
-| `expired` | `expired` | The payment window ended with nothing received. Still watched: a late payment still counts (`late: true`). |
+| `expired` | `expired` | The payment window ended with nothing received. Still watched: a late payment still counts (`late: true`), until the deposit is deleted (`deposit.deleted`, 24 hours after it expired by default). |
 | `detected` | `confirming` | A payment arrived and is waiting for confirmations. |
 | `partial` | `partial` | Confirmed, but short. The rest can come to the same address until `expires_at`. |
 | `confirmed` | `paid` | Paid in full. **Credit the order now.** |
@@ -259,6 +259,7 @@ curl -X POST https://api.hdpay.systems/v1/events/ack \
 | `deposit.partial` | Confirmed, but short. | Ask for the rest by `expires_at`. |
 | `deposit.confirmed` | Paid in full, or credited by support. | **Credit the order.** Thank the customer. |
 | `deposit.expired` | The window ended with nothing received. | Tell the customer; they can start again. |
+| `deposit.deleted` | It expired with nothing received and was deleted (by default 24 hours after it expired). The address is no longer watched, and `GET /v1/deposits/{id}` returns 404. | Drop the order, or let the customer start again. |
 | `deposit.review` | The rest of a short payment never came. | Ask the customer to contact support. |
 | `deposit.reopened` | Support gave the customer more time for the rest. | Ask for the rest by the new `expires_at`. |
 | `deposit.discount_expired` | A discount ended before the payment was complete. | Ask for the full price less what came. |

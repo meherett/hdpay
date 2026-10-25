@@ -2,7 +2,7 @@
 EVM sweeper (Ethereum, Sepolia, BNB Smart Chain).
 
 Native: send (balance - gas) to the treasury. Dust that cannot cover gas is left alone.
-ERC-20: the deposit address holds no ETH/BNB, so the project's fee funder (m/{project}'/coin'/{year}) first sends it
+ERC-20: the deposit address holds no ETH/BNB, so the project's fee funder (m/{project}'/{coin}') first sends it
 exactly the gas the token transfer needs; the next pass sends the tokens.
 
 Gas is always estimated, never assumed: sending ETH to an address that has never been used costs
@@ -123,7 +123,7 @@ class EvmSweeper(Sweeper):
         d.sweep_tx_hash = self._send(account, tx)
 
     def _funder(self, number: int):
-        """The project's funder for this UTC year, looked up on use so a sweeper running over New Year switches."""
+        """The project's fee funder, m/{project}'/{coin}'."""
         return Account.from_key(funder_private_key(self.chain.family, self.master_xprv, number))
 
     def _top_up(self, d: Deposit, number: int, to: str, amount: int, fee_fields: dict, gas_price: int) -> None:

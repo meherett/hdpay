@@ -261,3 +261,52 @@ def test_a_long_check_is_read_a_slice_per_pass_and_finishes(chain, monkeypatch):
         tick(chain)
     got = get(d)
     assert (got.check["status"], got.received_amount, got.late) == ("done", "10000000", False)
+
+
+# ---- expired deposits that never received anything are deleted after HDPAY_EXPIRED_DELETE_AFTER_HOURS
+
+def expired_long_ago(s, hours, **fields):
+    """A deposit whose window ended `hours` ago with nothing received."""
+    deposit_id = make_deposit(s, s.head - 50, status=Status.EXPIRED, **fields)
+    get_db().deposits.update_one({"_id": deposit_id}, {"$set": {"expires_at": utcnow() - timedelta(hours=hours)}})
+    return deposit_id
+
+
+def test_an_expired_unpaid_deposit_is_deleted_after_the_set_hours(chain, monkeypatch):
+    monkeypatch.setattr(core.settings, "expired_delete_after_hours", 24)
+    chain.balances[("TDeposit0", "USDT")] = 0
+    old = expired_long_ago(chain, 25)
+    catch_up(chain)
+    assert get(old) is None and "deposit.deleted" in event_types()
+
+
+def test_a_recent_one_is_kept(chain, monkeypatch):
+    monkeypatch.setattr(core.settings, "expired_delete_after_hours", 24)
+    chain.balances[("TDeposit0", "USDT")] = 0
+    recent = expired_long_ago(chain, 23)
+    catch_up(chain)
+    assert get(recent).status == Status.EXPIRED
+
+
+def test_zero_hours_keeps_them_all(chain, monkeypatch):
+    monkeypatch.setattr(core.settings, "expired_delete_after_hours", 0)
+    chain.balances[("TDeposit0", "USDT")] = 0
+    old = expired_long_ago(chain, 1000)
+    catch_up(chain)
+    assert get(old) is not None
+
+
+def test_money_found_at_the_last_look_is_counted_not_deleted(chain, monkeypatch):
+    monkeypatch.setattr(core.settings, "expired_delete_after_hours", 24)
+    chain.balances[("TDeposit0", "USDT")] = 10_000_000   # sent while nobody was looking
+    old = expired_long_ago(chain, 25)
+    catch_up(chain)
+    d = get(old)
+    assert d is not None and d.status == Status.DETECTED and d.received_amount == "10000000"
+
+
+def test_a_balance_that_cannot_be_read_keeps_it(chain, monkeypatch):
+    monkeypatch.setattr(core.settings, "expired_delete_after_hours", 24)
+    old = expired_long_ago(chain, 25)          # no balance known: the stub cannot say
+    catch_up(chain)
+    assert get(old) is not None

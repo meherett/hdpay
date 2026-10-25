@@ -39,6 +39,10 @@ class Settings(BaseSettings):
 
     # Project events kept for a project to catch up on after a disconnect
     event_retention_days: int = 30
+    # An expired deposit that never received anything is deleted this many hours after it expired, once
+    # its chain's watcher has read its balance one last time (0 keeps them all). Anything sent to its
+    # address after that is no longer seen: with paths made from a moment, only a database backup finds it.
+    expired_delete_after_hours: int = 24
 
     # API server and the browser apps allowed to call it (hdpay web and admin)
     port: int = 8090

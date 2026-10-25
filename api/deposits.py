@@ -1,14 +1,15 @@
 """Opening deposits and recording what happens to them, shared by the gateway, the admin and the workers."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
 from pymongo.database import Database
+from pymongo.errors import DuplicateKeyError
 
 from . import discounts, events
 from .chains import CHAINS
-from .db import Deposit, Status, find_deposit, next_value, utcnow
+from .db import Deposit, Status, find_deposit, utcnow
 from .keys import address_at, full_path
 from .projects import USD_STABLECOINS, accepted, get_project, price_amount, setting
 from .schemas import CreateDeposit, ProjectDepositOut
@@ -89,10 +90,11 @@ def open_deposit(db: Database, project: dict[str, Any], body: CreateDeposit) -> 
     if existing:
         return Deposit(existing)
 
-    # A fresh address every time the previous one has run out: the account's next index for today.
-    # Expired addresses stay watched, but are never handed out again.
-    day, account_id = now.date(), int(body.account_id)
-    index = next_value(db, f"address_index:{project['_id']}:{chain.family}:{day.isoformat()}:{body.account_id}")
+    # A fresh address every time the previous one has run out, for this very moment: its path is the
+    # time it was made, to the microsecond (api.keys). Expired addresses stay watched, but are never
+    # handed out again.
+    account_id = int(body.account_id)
+    moment = datetime.now(timezone.utc).replace(tzinfo=None)
     deposit = Deposit.new(
         project_id=project["_id"],
         project_number=project["number"],
@@ -101,10 +103,10 @@ def open_deposit(db: Database, project: dict[str, Any], body: CreateDeposit) -> 
         chain=chain.key,
         family=chain.family.value,
         asset=body.asset,
-        derivation_date=day.isoformat(),
-        index=index,
-        path=full_path(project["number"], chain.family, day, account_id, index),
-        address=address_at(chain.family, project["xpubs"][chain.family], day, account_id, index),
+        # the moment in the path, to the microsecond (MongoDB keeps a time only to the millisecond)
+        derived_at=moment.isoformat(timespec="microseconds") + "Z",
+        path=full_path(project["number"], chain.family, account_id, moment),
+        address=address_at(chain.family, project["xpubs"][chain.family], account_id, moment),
         expected_amount=str(body.expected_amount) if body.expected_amount else None,
         decimals=chain.decimals(body.asset),   # kept, so its amounts read right if the coin leaves the file
         # and its contract, so it is watched and swept there even if the file's contract changes later
@@ -116,6 +118,20 @@ def open_deposit(db: Database, project: dict[str, Any], body: CreateDeposit) -> 
         window_ends_at=now + timedelta(minutes=setting(project, "deposit_ttl_minutes")),
         **({"discount": discount} if discount else {}),
     )
-    deposit.insert(db)
+    # the same account in the same microsecond (all but impossible): the address is unique in the
+    # database, so the clash is refused, and the next microsecond is taken instead
+    for _ in range(100):
+        try:
+            deposit.insert(db)
+            break
+        except DuplicateKeyError:
+            moment += timedelta(microseconds=1)
+            deposit = Deposit(deposit.document() | {
+                "derived_at": moment.isoformat(timespec="microseconds") + "Z",
+                "path": full_path(project["number"], chain.family, account_id, moment),
+                "address": address_at(chain.family, project["xpubs"][chain.family], account_id, moment),
+            })
+    else:
+        raise HTTPException(503, "no free address right now: try again")
     notify(db, deposit, "deposit.created", project)
     return deposit

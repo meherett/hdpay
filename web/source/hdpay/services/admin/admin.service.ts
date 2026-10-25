@@ -142,7 +142,7 @@ export class AdminService extends APIService {
     return this.collection<TreasuryInterface[]>(undefined, `/projects/${id(projectId)}/treasury`);
   }
 
-  /** This year's fee funders with their live balance on each chain. Slow: it asks each RPC. */
+  /** The project's fee funders with their live balance on each chain. Slow: it asks each RPC. */
   public projectFunders(projectId: string): Observable<FunderBalancesInterface[]> {
     return this.collection<FunderBalancesInterface[]>(undefined, `/projects/${id(projectId)}/funders`);
   }

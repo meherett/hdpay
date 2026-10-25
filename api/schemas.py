@@ -575,8 +575,9 @@ class AdminDepositOut(ProjectDepositOut):
     project_name: str | None
     family: str
     path: str                    # full derivation path; admin only
-    derivation_date: str
-    index: int
+    derived_at: str | None       # the moment in the path, to the microsecond; None before 0.3.0
+    derivation_date: str | None  # before 0.3.0: the path's day and index
+    index: int | None
     block_number: int | None
     fee_tx_hash: str | None
     fee_tx_url: str | None
@@ -606,8 +607,9 @@ class AdminDepositOut(ProjectDepositOut):
             project_name=(project or {}).get("name"),
             family=d.family,
             path=d.path,
-            derivation_date=d.derivation_date,
-            index=d.index,
+            derived_at=d.derived_at if d.has("derived_at") else None,
+            derivation_date=d.derivation_date if d.has("derivation_date") else None,
+            index=d.index if d.has("index") else None,
             block_number=d.block_number,
             fee_tx_hash=d.fee_tx_hash,
             fee_tx_url=chain.explorer_tx(d.fee_tx_hash) if d.fee_tx_hash else None,
@@ -712,7 +714,7 @@ class FunderBalance(BaseModel):
 
 class FunderBalancesOut(BaseModel):
     family: str
-    path: str                  # m/{project}'/{coin}'/{year}: the funder changes every UTC year
+    path: str                  # m/{project}'/{coin}': the project's coin node itself
     address: str
     balances: list[FunderBalance]
 

@@ -73,10 +73,11 @@ export interface DepositInterface {
   /** ERC20 / TRC20 for a token; null for the native coin */
   standard: string | null;
   decimals: number;
-  /** UTC day in the derivation path, yyyy-mm-dd. */
-  derivation_date: string;
-  /** The account's index for that day. */
-  index: number;
+  /** The moment in the derivation path, to the microsecond (ISO, UTC); null for a deposit from before 0.3.0. */
+  derived_at: string | null;
+  /** Before 0.3.0: the UTC day in the path (yyyy-mm-dd) and the account's index for that day. */
+  derivation_date: string | null;
+  index: number | null;
   /** Full derivation path, e.g. m/195'/42/2026/10/20/0 */
   path: string;
   address: string;
@@ -195,7 +196,7 @@ export interface FunderBalanceInterface {
 
 export interface FunderBalancesInterface {
   family: string;
-  /** m/{project}'/{coin}'/{year}: a new funder each UTC year */
+  /** m/{project}'/{coin}': the project's coin node itself */
   path: string;
   address: string;
   balances: FunderBalanceInterface[];

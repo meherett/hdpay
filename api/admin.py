@@ -497,7 +497,7 @@ def recent_events(project_id: str, user: CurrentUser, db: DB, limit: Annotated[i
 
 @router.get("/projects/{project_id}/funders", response_model=list[FunderBalancesOut])
 def project_funders(project_id: str, user: CurrentUser):
-    """This year's fee funders of the project, with their native balance on the chains it accepts.
+    """The project's fee funders, with their native balance on the chains it accepts.
 
     Read live from each chain's RPC, so it is a separate call: a slow node never delays the rest.
     """

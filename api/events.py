@@ -15,6 +15,7 @@ Delivery is at least once: a project ignores an event id it has already handled.
     deposit.expired     the payment window ended with nothing received (a late payment is still counted)
     deposit.swept       the funds reached the project's treasury
     deposit.discount_expired  a product discount ended before the deposit was paid: the full price is due
+    deposit.deleted     expired with nothing received, and deleted after HDPAY_EXPIRED_DELETE_AFTER_HOURS
 
 Events are kept for HDPAY_EVENT_RETENTION_DAYS.
 """
@@ -34,7 +35,7 @@ EVENT_FOR_STATUS = {
     Status.EXPIRED: "deposit.expired",
     Status.SWEPT: "deposit.swept",
 }
-TYPES = ("deposit.created", "deposit.reopened", "deposit.discount_expired", *EVENT_FOR_STATUS.values())
+TYPES = ("deposit.created", "deposit.reopened", "deposit.discount_expired", "deposit.deleted", *EVENT_FOR_STATUS.values())
 
 
 def emit(db: Database, deposit: Deposit, event_type: str, snapshot: dict[str, Any]) -> dict[str, Any]:

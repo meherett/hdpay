@@ -7,8 +7,17 @@ Key derivation. Every project has its own hardened branch, then one hardened nod
 The project number is chosen at random when the project is created. Below the coin node every level
 is non-hardened, so the API derives addresses from that node's xpub alone:
 
-    m/{project}'/{coin}'/{account}/{year}/{month}/{day}/{index}   deposit
-    m/{project}'/{coin}'/{year}                                   the project's fee funder for that UTC year
+    m/{project}'/{coin}'/{account}/{seconds}/{microseconds}   deposit
+    m/{project}'/{coin}'                                      the project's fee funder (the coin node itself)
+
+A deposit's path is the moment its address was made: {seconds} since 2026-01-01 00:00 UTC
+(PATH_EPOCH; a path level holds up to 2^31 - 1, which lasts until 2094-01-19), and {microseconds}
+within that second (0 to 999999). Every address is for one moment only, and its path tells when:
+
+    m/48213'/195'/42/25707922/123456   account 42, 2026-10-25 13:05:22.123456 UTC
+
+Deposits from before 0.3.0 have m/{project}'/{coin}'/{account}/{year}/{month}/{day}/{index}. Each
+deposit keeps the path it was made with and the sweeper signs with that, so both kinds sweep.
 
 The hardened project level keeps projects apart: one project's keys reveal nothing about another's.
 It also means a project's xpubs can only be made from the master key, so they are exported once, on
@@ -21,7 +30,7 @@ import argparse
 import getpass
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import datetime, timedelta
 
 from hdwallet import HDWallet
 from hdwallet.cryptocurrencies import Ethereum, Tron
@@ -56,14 +65,32 @@ def coin_path(number: int, family: Family) -> str:
     return f"m/{number}'/{_CRYPTOCURRENCIES[family].COIN_TYPE}'"
 
 
-def relative_path(day: date, account_id: int, index: int) -> str:
+PATH_EPOCH = datetime(2026, 1, 1)   # naive UTC: a deposit path counts its seconds from here
+
+
+def path_moment(at: datetime) -> tuple[int, int]:
+    """The two path levels for a moment (naive UTC): seconds since PATH_EPOCH, and microseconds."""
+    since = at.replace(tzinfo=None) - PATH_EPOCH
+    seconds = since.days * 86_400 + since.seconds
+    if seconds < 0:
+        raise ValueError(f"a deposit path counts from {PATH_EPOCH.date()}: {at} is before it")
+    _check_index(seconds, "seconds since the path epoch")
+    return seconds, since.microseconds
+
+
+def moment_of(seconds: int, microseconds: int) -> datetime:
+    """The moment (naive UTC) a deposit path's two last levels stand for."""
+    return PATH_EPOCH + timedelta(seconds=seconds, microseconds=microseconds)
+
+
+def relative_path(account_id: int, at: datetime) -> str:
     _check_index(account_id, "account id")
-    _check_index(index, "index")
-    return f"m/{account_id}/{day.year}/{day.month}/{day.day}/{index}"
+    seconds, microseconds = path_moment(at)
+    return f"m/{account_id}/{seconds}/{microseconds}"
 
 
-def full_path(number: int, family: Family, day: date, account_id: int, index: int) -> str:
-    return coin_path(number, family) + relative_path(day, account_id, index)[1:]
+def full_path(number: int, family: Family, account_id: int, at: datetime) -> str:
+    return coin_path(number, family) + relative_path(account_id, at)[1:]
 
 
 # ---- the master key (sweeper host)
@@ -120,33 +147,41 @@ def check_project_xpub(family: Family, xpub: str) -> None:
         )
 
 
-def address_at(family: Family, xpub: str, day: date, account_id: int, index: int) -> str:
-    """Deposit address, derived watch-only from the project's xpub for the chain family."""
+def address_at(family: Family, xpub: str, account_id: int, at: datetime) -> str:
+    """Deposit address for the moment `at`, derived watch-only from the project's xpub for the chain family."""
     hd = (
         _wallet(family)
         .from_xpublic_key(xpublic_key=xpub, strict=False)
-        .from_derivation(derivation=CustomDerivation(path=relative_path(day, account_id, index)))
+        .from_derivation(derivation=CustomDerivation(path=relative_path(account_id, at)))
     )
     return hd.address()
 
 
-# ---- fee funders: one per project, chain family and UTC year
+# ---- fee funders: one per project and chain family, at the coin node itself
+#
+# Before 0.4.0 a funder was m/{project}'/{coin}'/{year}, a new one each UTC year. `python -m api.keys
+# project <number>` lists those too, so what one still holds can be checked and moved by hand.
 
-def current_year() -> int:
-    return datetime.now(timezone.utc).year
+def funder_path(number: int, family: Family) -> str:
+    return coin_path(number, family)
 
 
-def funder_path(number: int, family: Family, year: int | None = None) -> str:
-    return f"{coin_path(number, family)}/{year or current_year()}"
+def funder_address(family: Family, xpub: str) -> str:
+    """The project's fee funder: the address of the coin node its xpub is for."""
+    return _wallet(family).from_xpublic_key(xpublic_key=xpub, strict=False).address()
 
 
-def funder_address(family: Family, xpub: str, year: int | None = None) -> str:
+def funder_private_key(family: Family, master_xprv: str, number: int) -> str:
+    return _from_master(family, master_xprv, funder_path(number, family)).private_key()
+
+
+OLD_FUNDER_YEARS = (2025, 2026)   # the years a funder from before 0.4.0 can be for
+
+
+def old_funder_address(family: Family, xpub: str, year: int) -> str:
+    """A fee funder from before 0.4.0, m/{project}'/{coin}'/{year}, to check what it still holds."""
     hd = _wallet(family).from_xpublic_key(xpublic_key=xpub, strict=False)
-    return hd.from_derivation(derivation=CustomDerivation(path=f"m/{year or current_year()}")).address()
-
-
-def funder_private_key(family: Family, master_xprv: str, number: int, year: int | None = None) -> str:
-    return _from_master(family, master_xprv, funder_path(number, family, year)).private_key()
+    return hd.from_derivation(derivation=CustomDerivation(path=f"m/{year}")).address()
 
 
 # ---- command line, on the host that holds the master key
@@ -221,6 +256,9 @@ def main() -> None:
         xpub = project_xpub(master, args.number, family)
         print(f"{family}  {coin_path(args.number, family)}  {xpub}")
         print(f"      fee funder {funder_path(args.number, family)} = {funder_address(family, xpub)}")
+        for year in OLD_FUNDER_YEARS:
+            print(f"      old fee funder (before 0.4.0) {funder_path(args.number, family)}/{year} = "
+                  f"{old_funder_address(family, xpub, year)}: move what it holds to the one above")
 
 
 if __name__ == "__main__":

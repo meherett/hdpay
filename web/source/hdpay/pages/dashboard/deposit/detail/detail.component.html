@@ -328,7 +328,11 @@
       </nz-descriptions-item>
       <nz-descriptions-item nzTitle="Derivation path">
         <code>{{ d.path }}</code>
-        <span class="muted"> account {{ d.account_id }}, {{ d.derivation_date }}, index {{ d.index }}</span>
+        @if (d.derived_at) {
+          <span class="muted"> account {{ d.account_id }}, made {{ d.derived_at.replace('T', ' ').replace('Z', '') }} UTC</span>
+        } @else {
+          <span class="muted"> account {{ d.account_id }}, {{ d.derivation_date }}, index {{ d.index }}</span>
+        }
       </nz-descriptions-item>
       <nz-descriptions-item nzTitle="Payment transaction">
         <ng-container *ngTemplateOutlet="tx; context: { hash: d.tx_hash, url: d.tx_url, extra: d.block_number ? 'block ' + d.block_number : '' }" />

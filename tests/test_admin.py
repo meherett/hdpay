@@ -162,7 +162,7 @@ def test_a_projects_treasury_and_fee_funders(client, admin, mongo, project, monk
 
     monkeypatch.setattr(balances, "native_balance", lambda chain, address: 5 * 10**17)
     funders = {f["family"]: f for f in client.get(f"/admin/projects/{project['_id']}/funders", headers=admin).json()}
-    assert funders["evm"]["path"] == f"m/{NUMBER}'/60'/{utcnow().year}"
+    assert funders["evm"]["path"] == f"m/{NUMBER}'/60'"
     assert {b["chain"] for b in funders["evm"]["balances"]} == {"sepolia", "bsc"}
 
 

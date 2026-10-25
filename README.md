@@ -80,14 +80,24 @@ Every project has a random number, chosen when it is created, that starts all of
 m/{project}'/60'      evm: 0x... addresses, identical on Ethereum, Sepolia and BNB Smart Chain
 m/{project}'/195'     tron: T... addresses, identical on Tron mainnet and Nile
 
-  m/{project}'/{coin}'/{account}/{year}/{month}/{day}/{index}   deposit, e.g. m/48213'/195'/42/2026/10/21/0
-  m/{project}'/{coin}'/{year}                                   the project's fee funder for that UTC year
+  m/{project}'/{coin}'/{account}/{seconds}/{microseconds}   deposit, e.g. m/48213'/195'/42/25707922/123456
+  m/{project}'/{coin}'                                      the project's fee funder (the coin node itself)
 ```
 
 - **Project:** a hardened level, so one project's keys reveal nothing about another's.
 - **Account ID:** the project's own number for its customer, 0 to 2,147,483,647 (a path level cannot
   hold text). Account 42 in one project has nothing to do with account 42 in another.
-- **Date and index:** the UTC day, and that account's counter for the day. A path is **never issued twice**.
+- **Seconds and microseconds:** the moment the address was made, so every address is for that one
+  moment only. `{seconds}` counts from 2026-01-01 00:00 UTC (a path level holds up to 2,147,483,647, which
+  lasts until 2094-01-19); `{microseconds}` is the part of that second, 0 to 999,999. The example above is
+  account 42 at 2026-10-25 13:05:22.123456 UTC. A path is **never issued twice**: addresses are unique in
+  the database, and in the all but impossible case of the same account in the same microsecond, the next
+  microsecond is taken.
+- **Before 0.3.0** paths were `m/{project}'/{coin}'/{account}/{year}/{month}/{day}/{index}` (the UTC day
+  and the account's counter for it). Every deposit keeps the path it was made with, and the sweeper signs
+  with that stored path, so both kinds are watched and swept the same way.
+- **Back up MongoDB.** A path made from a moment cannot be guessed, so the deposits in the database are the
+  record of which addresses hold money: without them the master key alone would not find them.
 - **Keys:** the API holds only each project's xpubs (`m/{project}'/60'`, `m/{project}'/195'`): it derives
   addresses but cannot spend. The sweepers hold the master key (`HDPAY_MASTER_XPRV`, the root): they are
   the only processes that can move funds. Because the project level is hardened, a project's xpubs can
@@ -134,6 +144,10 @@ pending -> expired -> detected -> confirmed -> swept
 | `review` | The rest never came — **not watched**; support decides     | `contact_support`   | `deposit.review`   |
 
 - A late payment of the right amount to an expired address is credited automatically (`late = true`).
+- An expired deposit that never received anything is **deleted** `HDPAY_EXPIRED_DELETE_AFTER_HOURS` after
+  it expired (24 by default; `0` keeps them all). Its chain's watcher reads the address's balance one last
+  time first: if anything arrived after all, it is counted and the deposit kept. After that a payment to
+  the address is no longer watched, and the project gets `deposit.deleted`.
 - An underpayment becomes `partial`: the same address waits for the rest for the project's remainder
   window, counted from the short payment. If the rest arrives in time the deposit is credited and swept.
   A reorg of that later payment rolls back only that payment, never the part already confirmed.
@@ -262,6 +276,7 @@ holds the master key. A variable set in the environment wins over the files.
 | `HDPAY_REMAINDER_WINDOW_MINUTES` | `1440`                      | Default time to send the rest of an underpayment |
 | `HDPAY_AMOUNT_TOLERANCE_BPS`     | `50`                        | Default accepted underpayment, in basis points |
 | `HDPAY_EVENT_RETENTION_DAYS`     | `30`                        | How long projects can catch up on missed events |
+| `HDPAY_EXPIRED_DELETE_AFTER_HOURS` | `24`                      | Hours after an expired, never-paid deposit is deleted; `0` keeps them |
 | `HDPAY_POLL_INTERVAL_SECONDS`    | `5`                         | Watcher loop interval                      |
 | `HDPAY_PORT`                     | `8090`                      | API port                                   |
 | `HDPAY_RELOAD`                   | `false`                     | Development: restart the API when `api/` code changes |

@@ -2,9 +2,10 @@ import pytest
 from hdwallet.cryptocurrencies import Ethereum, Tron
 from starlette.websockets import WebSocketDisconnect
 
-from factories import NUMBER, key_headers, make_project, today, wallet_address
+from factories import NUMBER, key_headers, make_project, wallet_address
 from api.chains import Family
-from api.keys import full_path
+from api.db import get_db
+from api.keys import full_path, moment_of
 
 PRODUCTS = [{"value": "100k", "name": "$100,000", "subname": "(Most popular)"}, {"value": "10k", "name": "$10,000", "subname": None}]
 
@@ -27,8 +28,11 @@ def test_a_deposit_is_derived_under_the_project(client, secret):
     reply = create(client, secret, expected_amount=25_000_000)
     assert reply.status_code == 200
     d = reply.json()
-    path = full_path(NUMBER, Family.TRON, today(), 42, 0)
-    assert d["address"] == wallet_address(Tron, path)
+    stored = get_db().deposits.find_one({"_id": d["id"]})
+    seconds, microseconds = map(int, stored["path"].split("/")[-2:])
+    assert stored["path"] == full_path(NUMBER, Family.TRON, 42, moment_of(seconds, microseconds))
+    assert d["address"] == wallet_address(Tron, stored["path"])
+    assert stored["derived_at"] == moment_of(seconds, microseconds).isoformat(timespec="microseconds") + "Z"
     assert (d["status"], d["internal_status"], d["expected_amount"], d["received_amount"]) == ("pending", "pending", "25000000", "0")
     assert (d["product"], d["product_name"], d["standard"]) == ("100k", "$100,000", "TRC20")
     assert "path" not in d and "email" not in d
@@ -41,15 +45,37 @@ def test_the_open_deposit_is_reused_and_a_new_product_gets_its_own(client, secre
     assert other["id"] != first["id"]
 
 
-def test_indexes_are_per_account_and_per_family(client, secret):
-    a0 = create(client, secret, account_id="7").json()
-    a1 = create(client, secret, account_id="7", asset="TRX").json()            # same family, next index
-    b0 = create(client, secret, account_id="8").json()
-    evm0 = create(client, secret, account_id="7", chain="sepolia", asset="ETH").json()   # its own counter
-    assert a0["address"] == wallet_address(Tron, full_path(NUMBER, Family.TRON, today(), 7, 0))
-    assert a1["address"] == wallet_address(Tron, full_path(NUMBER, Family.TRON, today(), 7, 1))
-    assert b0["address"] == wallet_address(Tron, full_path(NUMBER, Family.TRON, today(), 8, 0))
-    assert evm0["address"] == wallet_address(Ethereum, full_path(NUMBER, Family.EVM, today(), 7, 0))
+def test_every_deposit_gets_its_own_moment_and_address(client, secret):
+    made = [
+        create(client, secret, account_id="7").json(),
+        create(client, secret, account_id="7", asset="TRX").json(),
+        create(client, secret, account_id="8").json(),
+        create(client, secret, account_id="7", chain="sepolia", asset="ETH").json(),
+    ]
+    stored = [get_db().deposits.find_one({"_id": d["id"]}) for d in made]
+    assert len({d["address"] for d in made}) == 4 and len({s["path"] for s in stored}) == 4
+    for d, s in zip(made, stored):
+        coin = Ethereum if s["family"] == "evm" else Tron
+        assert d["address"] == wallet_address(coin, s["path"])
+
+
+def test_the_same_microsecond_takes_the_next_one(client, secret, monkeypatch):
+    import api.deposits as deposits
+    from datetime import datetime as real
+
+    frozen = real(2026, 10, 25, 13, 5, 22, 123456)
+
+    class Clock(real):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen.replace(tzinfo=tz)
+
+    monkeypatch.setattr(deposits, "datetime", Clock)
+    first = create(client, secret, account_id="7").json()
+    second = create(client, secret, account_id="7", product="10k").json()   # same account, same microsecond
+    paths = [get_db().deposits.find_one({"_id": d["id"]})["path"] for d in (first, second)]
+    assert paths == [f"m/{NUMBER}'/195'/7/25707922/123456", f"m/{NUMBER}'/195'/7/25707922/123457"]
+    assert first["address"] != second["address"]
 
 
 def test_projects_share_nothing(client, mongo, project, secret):

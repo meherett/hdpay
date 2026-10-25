@@ -3,7 +3,7 @@ Tron sweeper (mainnet, Nile).
 
 TRX: send the balance minus a small bandwidth reserve to the treasury.
 TRC-20: a deposit address that only received tokens is not activated and holds no TRX, so
-the project's fee funder (m/{project}'/coin'/{year}) first sends it the TRX the transfer will burn for energy and bandwidth.
+the project's fee funder (m/{project}'/{coin}') first sends it the TRX the transfer will burn for energy and bandwidth.
 That transfer also activates the account. The next pass sends the tokens.
 """
 
@@ -120,7 +120,7 @@ class TronSweeper(Sweeper):
         d.sweep_tx_hash = txn.broadcast().txid
 
     def _funder_key(self, number: int) -> PrivateKey:
-        """The project's funder for this UTC year, looked up on use so a sweeper running over New Year switches."""
+        """The project's fee funder, m/{project}'/{coin}'."""
         return PrivateKey(bytes.fromhex(funder_private_key(self.chain.family, self.master_xprv, number)))
 
     def _top_up(self, d: Deposit, number: int, amount: int) -> None:
