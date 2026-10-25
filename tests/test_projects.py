@@ -156,7 +156,7 @@ def test_a_sweeper_gives_a_new_project_its_keys(client, mongo, admin):
     project = create(client, admin).json()
     assert project["status"] == "awaiting_keys"
     sweeper = StubSweeper()
-    sweeper.master_xprv = MASTER
+    sweeper.root_xprv = MASTER
     core.sweep_once(mongo, sweeper)
     saved = mongo.projects.find_one({"_id": project["id"]})
     assert saved["status"] == "active"

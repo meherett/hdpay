@@ -24,7 +24,7 @@ from pymongo.database import Database
 from api.chains import Family, TxStatus, follow, handles
 from api.db import Deposit, Status, create_indexes, find_deposits, get_db, set_counter, utcnow
 from api.deposits import notify_status
-from api.keys import project_xpub
+from api.keys import check_master_key, project_xpub
 from api.projects import ProjectStatus, projects_by_id
 from .base import Sweeper
 
@@ -82,11 +82,47 @@ def advance(sweeper: Sweeper, d: Deposit, project: dict[str, Any]) -> None:
     sweeper.sweep(d, project, treasury)
 
 
-def issue_keys(db: Database, master_xprv: str) -> None:
+class WrongMasterKey(RuntimeError):
+    """HDPAY_ROOT_XPRV is missing, not a root private key, or not the key of this database's projects."""
+
+
+def check_master_key_matches(db: Database, root_xprv: str) -> None:
+    """Refuse to sweep with the wrong master key, in this order:
+
+    1. it must be a root private key (api.keys.check_master_key: hdwallet's is_valid_key, is_root_key);
+    2. every xpub a project in the database has must be the one this key gives for it. A database with
+       no project keys yet takes any root key.
+
+    With the wrong key no deposit could be swept (each signature is checked against its address), the
+    fee funders would be other, empty addresses, and new projects would be given keys of the wrong
+    wallet. Usually the database is the wrong one (HDPAY_MONGODB_DB), or the key (HDPAY_ROOT_XPRV).
+    """
+    if not root_xprv:
+        raise WrongMasterKey("HDPAY_ROOT_XPRV is not set: the sweeper needs the root key (envs/sweeper.env)")
+    try:
+        check_master_key(root_xprv)
+    except RuntimeError as exc:
+        raise WrongMasterKey(str(exc)) from None
+    wrong = []
+    for project in db.projects.find({}, {"name": 1, "number": 1, "xpubs": 1}):
+        for family in Family:
+            xpub = (project.get("xpubs") or {}).get(family.value)
+            if xpub and xpub != project_xpub(root_xprv, project["number"], family):
+                wrong.append(f"{project.get('name')} ({project['number']}, {family.value})")
+    if wrong:
+        shown = ", ".join(wrong[:5]) + (f" and {len(wrong) - 5} more" if len(wrong) > 5 else "")
+        raise WrongMasterKey(
+            f"HDPAY_ROOT_XPRV is not the key the projects in database {db.name!r} were made with: "
+            f"{shown} do not match it. Nothing is swept. Check that HDPAY_MONGODB_DB is the right "
+            "database and HDPAY_ROOT_XPRV the right key, then start the sweeper again."
+        )
+
+
+def issue_keys(db: Database, root_xprv: str) -> None:
     """Projects still waiting for their keys get them from the master key, and become active. Only those:
     a key already set (pasted by hand) is never replaced, since its deposits' addresses depend on it."""
     for project in db.projects.find({"status": ProjectStatus.AWAITING_KEYS}):
-        xpubs = {f"xpubs.{f.value}": project_xpub(master_xprv, project["number"], f) for f in Family}
+        xpubs = {f"xpubs.{f.value}": project_xpub(root_xprv, project["number"], f) for f in Family}
         done = db.projects.update_one(
             {"_id": project["_id"], "status": ProjectStatus.AWAITING_KEYS},   # another sweeper may be first
             {"$set": {**xpubs, "status": ProjectStatus.ACTIVE, "updated_at": utcnow()}},
@@ -96,10 +132,10 @@ def issue_keys(db: Database, master_xprv: str) -> None:
 
 
 def sweep_once(db: Database, sweeper: Sweeper) -> None:
-    master_xprv = getattr(sweeper, "master_xprv", None)
-    if master_xprv:
+    root_xprv = getattr(sweeper, "root_xprv", None)
+    if root_xprv:
         try:
-            issue_keys(db, master_xprv)
+            issue_keys(db, root_xprv)
         except Exception:
             log.exception("giving new projects their keys failed")
     projects = projects_by_id(db)
@@ -133,6 +169,8 @@ def run(sweeper: Sweeper, build=None) -> None:
     log.info("sweeping %s to each project's treasury", sweeper.chain.name)
     db = get_db()
     create_indexes(db)
+    if getattr(sweeper, "root_xprv", None):
+        check_master_key_matches(db, sweeper.root_xprv)   # stops here, before anything is signed or issued
     while True:
         try:
             if build:

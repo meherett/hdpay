@@ -2,7 +2,7 @@ from datetime import timedelta
 
 import pytest
 
-from factories import TRON_TREASURY, make_project
+from factories import MASTER, TRON_TREASURY, make_project
 from api.chains import TxStatus
 from api.db import Deposit, Status, find_deposit, get_counter, get_db, utcnow
 from sweeper.core import sweep_once as _sweep_once
@@ -150,3 +150,83 @@ def test_a_deposit_whose_coin_left_the_chains_file_is_held_with_the_reason():
     sweep_once(s)                                 # no crash, nothing sent
     got = get(d)
     assert s.sent == [] and "its contract is not known" in got.sweep_hold
+
+
+# ---- the master key must be the one the projects were made with
+
+def test_a_database_without_project_keys_takes_any_master_key(mongo):
+    from sweeper.core import check_master_key_matches
+
+    mongo.projects.delete_many({})
+    mongo.projects.insert_one({"_id": "new", "name": "New", "number": 7, "xpubs": {}})
+    check_master_key_matches(mongo, MASTER)          # nothing to compare: starts
+
+
+def test_the_projects_own_master_key_is_accepted(mongo):
+    from sweeper.core import check_master_key_matches
+
+    mongo.projects.delete_many({})
+    make_project(mongo)                              # its xpubs come from MASTER
+    check_master_key_matches(mongo, MASTER)
+
+
+def test_another_master_key_is_refused_naming_the_project_and_both_settings(mongo):
+    from hdwallet import HDWallet
+    from hdwallet.cryptocurrencies import Ethereum
+    from hdwallet.hds import BIP32HD
+    from hdwallet.mnemonics import BIP39Mnemonic
+
+    from sweeper.core import WrongMasterKey, check_master_key_matches
+
+    other = HDWallet(cryptocurrency=Ethereum, hd=BIP32HD, network=Ethereum.NETWORKS.MAINNET).from_mnemonic(
+        mnemonic=BIP39Mnemonic(mnemonic="legal winner thank year wave sausage worth useful legal winner thank yellow")).root_xprivate_key()
+    mongo.projects.delete_many({})
+    make_project(mongo, name="Shop")
+    with pytest.raises(WrongMasterKey) as refused:
+        check_master_key_matches(mongo, other)
+    message = str(refused.value)
+    assert "Shop" in message and "HDPAY_MONGODB_DB" in message and "HDPAY_ROOT_XPRV" in message
+    assert other not in message                      # the key itself is never shown
+
+
+def test_the_sweeper_stops_before_sweeping_or_issuing_keys(mongo, monkeypatch):
+    from sweeper import core
+    from sweeper.core import WrongMasterKey
+
+    mongo.projects.delete_many({})
+    make_project(mongo)
+    mongo.projects.insert_one({"_id": "waiting", "name": "Waiting", "number": 9, "xpubs": {}, "status": "awaiting_keys"})
+    s = StubSweeper()
+    s.root_xprv = "xprv-of-another-wallet"
+    monkeypatch.setattr(core, "check_master_key_matches",
+                        lambda db, key: (_ for _ in ()).throw(WrongMasterKey("wrong key")))
+    monkeypatch.setattr(core, "sweep_once", lambda db, sweeper: pytest.fail("swept with the wrong key"))
+    with pytest.raises(WrongMasterKey):
+        core.run(s)
+    assert mongo.projects.find_one({"_id": "waiting"})["xpubs"] == {}   # no keys handed out
+
+
+@pytest.mark.parametrize("key, problem", [("", "not set"), ("not-a-key", "not a valid extended key")])
+def test_the_key_is_checked_to_be_a_root_key_before_the_projects(mongo, key, problem):
+    from sweeper.core import WrongMasterKey, check_master_key_matches
+
+    mongo.projects.delete_many({})                   # even with no projects, a bad key is refused
+    with pytest.raises(WrongMasterKey, match=problem):
+        check_master_key_matches(mongo, key)
+
+
+def test_a_child_key_is_refused_as_not_root_even_before_projects_are_compared(mongo, monkeypatch):
+    from hdwallet import HDWallet
+    from hdwallet.cryptocurrencies import Ethereum
+    from hdwallet.derivations import CustomDerivation
+    from hdwallet.hds import BIP32HD
+
+    from sweeper import core
+
+    child = HDWallet(cryptocurrency=Ethereum, hd=BIP32HD, network=Ethereum.NETWORKS.MAINNET) \
+        .from_xprivate_key(xprivate_key=MASTER).from_derivation(derivation=CustomDerivation(path="m/1'")).xprivate_key()
+    mongo.projects.delete_many({})
+    make_project(mongo)
+    monkeypatch.setattr(core, "project_xpub", lambda *a: pytest.fail("projects compared before the root check"))
+    with pytest.raises(core.WrongMasterKey, match="root key"):
+        core.check_master_key_matches(mongo, child)

@@ -16,10 +16,10 @@ class Sweeper(ABC):
 
     def __init__(self, chain: Chain):
         self.chain = chain
-        self.master_xprv = settings.master_xprv
-        if not self.master_xprv:
-            raise RuntimeError(f"HDPAY_MASTER_XPRV is required to sweep {chain.key}")
-        check_master_key(self.master_xprv)
+        self.root_xprv = settings.root_xprv
+        if not self.root_xprv:
+            raise RuntimeError(f"HDPAY_ROOT_XPRV is required to sweep {chain.key}")
+        check_master_key(self.root_xprv)
 
     def coins(self, units: int) -> str:
         """An amount of the chain's own coin, readable: 2106400000000 wei is '0.0000021064 BNB'."""

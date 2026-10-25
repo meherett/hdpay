@@ -23,7 +23,7 @@ The hardened project level keeps projects apart: one project's keys reveal nothi
 It also means a project's xpubs can only be made from the master key, so they are exported once, on
 the sweeper host, with `python -m api.keys project <number>`, and pasted into the admin.
 
-The API never sees a private key; the sweepers hold the master key (HDPAY_MASTER_XPRV).
+The API never sees a private key; the sweepers hold the master key (HDPAY_ROOT_XPRV).
 """
 
 import argparse
@@ -36,6 +36,7 @@ from hdwallet import HDWallet
 from hdwallet.cryptocurrencies import Ethereum, Tron
 from hdwallet.derivations import CustomDerivation
 from hdwallet.hds import BIP32HD
+from hdwallet.keys import is_root_key, is_valid_key
 from hdwallet.mnemonics import BIP39_MNEMONIC_LANGUAGES, BIP39_MNEMONIC_WORDS, BIP39Mnemonic
 
 from .chains import Family
@@ -96,28 +97,35 @@ def full_path(number: int, family: Family, account_id: int, at: datetime) -> str
 # ---- the master key (sweeper host)
 
 def check_master_key(xprv: str) -> None:
-    """Refuse anything but a root private key: every project is derived below it."""
+    """Refuse anything but a root private key: every project is derived below it. hdwallet's
+    is_root_key checks depth 0, parent fingerprint 00000000 and index 0, so a child key with its depth
+    changed does not pass. The messages never repeat the key."""
     try:
-        node = _wallet(Family.EVM).from_xprivate_key(xprivate_key=xprv)
-        depth = node.depth()
-    except Exception as exc:
-        raise RuntimeError(f"HDPAY_MASTER_XPRV is not a valid extended private key: {exc}") from exc
-    if depth != 0:
-        raise RuntimeError(f"HDPAY_MASTER_XPRV must be the root key (depth 0), got depth {depth}")
+        valid = is_valid_key(xprv)
+    except Exception:
+        valid = False
+    if not valid:
+        raise RuntimeError("HDPAY_ROOT_XPRV is not a valid extended key")
+    if not is_root_key(xprv):
+        raise RuntimeError("HDPAY_ROOT_XPRV must be the root key (m: depth 0, no parent), not a key derived from it")
+    try:
+        _wallet(Family.EVM).from_xprivate_key(xprivate_key=xprv)
+    except Exception:
+        raise RuntimeError("HDPAY_ROOT_XPRV must be a private key (xprv...), not a public one (xpub...)") from None
 
 
-def _from_master(family: Family, master_xprv: str, path: str) -> HDWallet:
-    return _wallet(family).from_xprivate_key(xprivate_key=master_xprv).from_derivation(
+def _from_master(family: Family, root_xprv: str, path: str) -> HDWallet:
+    return _wallet(family).from_xprivate_key(xprivate_key=root_xprv).from_derivation(
         derivation=CustomDerivation(path=path)
     )
 
 
-def project_xpub(master_xprv: str, number: int, family: Family) -> str:
+def project_xpub(root_xprv: str, number: int, family: Family) -> str:
     """The watch-only key the API needs for a project's addresses on a chain family."""
-    return _from_master(family, master_xprv, coin_path(number, family)).xpublic_key()
+    return _from_master(family, root_xprv, coin_path(number, family)).xpublic_key()
 
 
-def private_key_for_path(family: Family, master_xprv: str, path: str) -> str:
+def private_key_for_path(family: Family, root_xprv: str, path: str) -> str:
     """Hex private key (no 0x prefix) for a full path stored with a deposit. Sweeper only.
 
     The sweeper uses the stored path rather than rebuilding it, so a deposit keeps its key even if
@@ -125,7 +133,7 @@ def private_key_for_path(family: Family, master_xprv: str, path: str) -> str:
     """
     if not path.startswith("m/"):
         raise ValueError(f"{path} is not a full derivation path")
-    return _from_master(family, master_xprv, path).private_key()
+    return _from_master(family, root_xprv, path).private_key()
 
 
 # ---- a project's xpubs (API)
@@ -171,8 +179,8 @@ def funder_address(family: Family, xpub: str) -> str:
     return _wallet(family).from_xpublic_key(xpublic_key=xpub, strict=False).address()
 
 
-def funder_private_key(family: Family, master_xprv: str, number: int) -> str:
-    return _from_master(family, master_xprv, funder_path(number, family)).private_key()
+def funder_private_key(family: Family, root_xprv: str, number: int) -> str:
+    return _from_master(family, root_xprv, funder_path(number, family)).private_key()
 
 
 OLD_FUNDER_YEARS = (2025, 2026)   # the years a funder from before 0.4.0 can be for
@@ -189,10 +197,10 @@ def old_funder_address(family: Family, xpub: str, year: int) -> str:
 def _master_from_environment() -> str:
     from .config import settings
 
-    if not settings.master_xprv:
-        raise SystemExit("HDPAY_MASTER_XPRV is not set: put it in envs/sweeper.env (python -m api.keys master)")
-    check_master_key(settings.master_xprv)
-    return settings.master_xprv
+    if not settings.root_xprv:
+        raise SystemExit("HDPAY_ROOT_XPRV is not set: put it in envs/sweeper.env (python -m api.keys master)")
+    check_master_key(settings.root_xprv)
+    return settings.root_xprv
 
 
 def _save_master(key: str) -> None:
@@ -202,12 +210,12 @@ def _save_master(key: str) -> None:
     from .config import ENVS
 
     path = ENVS / "sweeper.env"
-    current = dotenv_values(path).get("HDPAY_MASTER_XPRV") if path.exists() else None
+    current = dotenv_values(path).get("HDPAY_ROOT_XPRV") if path.exists() else None
     if current and current != key:
         raise SystemExit(f"{path} already holds a different master key; remove that line first if you mean to replace it")
     template = ENVS / "sweeper.env.example"
-    text = template.read_text(encoding="utf-8") if template.exists() else "HDPAY_MASTER_XPRV="
-    lines = [f"HDPAY_MASTER_XPRV={key}" if line.startswith("HDPAY_MASTER_XPRV=") else line for line in text.splitlines()]
+    text = template.read_text(encoding="utf-8") if template.exists() else "HDPAY_ROOT_XPRV="
+    lines = [f"HDPAY_ROOT_XPRV={key}" if line.startswith("HDPAY_ROOT_XPRV=") else line for line in text.splitlines()]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Saved the master key to {path}", file=sys.stderr)
 
@@ -217,7 +225,7 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     master = commands.add_parser(
         "master",
-        help="the root key (HDPAY_MASTER_XPRV) for a recovery phrase, or for a new 24-word one",
+        help="the root key (HDPAY_ROOT_XPRV) for a recovery phrase, or for a new 24-word one",
     )
     master.add_argument(
         "--save", action="store_true",
@@ -245,7 +253,7 @@ def main() -> None:
         if args.save:
             _save_master(key)
             return
-        print(f"HDPAY_MASTER_XPRV={key}")
+        print(f"HDPAY_ROOT_XPRV={key}")
         if sys.stdout.isatty():
             print("# put this line in envs/sweeper.env: the sweepers need it, the API never does", file=sys.stderr)
         return

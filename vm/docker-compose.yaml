@@ -59,7 +59,7 @@ x-watcher: &watcher
 #  env_file:
 #    - ../envs/common.env
 #    - path: ../envs/sweeper.env
-#      required: false   # without it the sweeper stops at once, saying HDPAY_MASTER_XPRV is missing
+#      required: false   # without it the sweeper stops at once, saying HDPAY_ROOT_XPRV is missing
 
 services:
   api:

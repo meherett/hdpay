@@ -42,7 +42,7 @@ USER hdpay
 FROM base AS watcher
 CMD ["python", "-m", "watcher"]
 
-# ---- one sweeper per chain, with the master key (HDPAY_MASTER_XPRV): HDPAY_CHAIN, or --chain
+# ---- one sweeper per chain, with the master key (HDPAY_ROOT_XPRV): HDPAY_CHAIN, or --chain
 FROM base AS sweeper
 CMD ["python", "-m", "sweeper"]
 

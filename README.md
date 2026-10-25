@@ -99,7 +99,7 @@ m/{project}'/195'     tron: T... addresses, identical on Tron mainnet and Nile
 - **Back up MongoDB.** A path made from a moment cannot be guessed, so the deposits in the database are the
   record of which addresses hold money: without them the master key alone would not find them.
 - **Keys:** the API holds only each project's xpubs (`m/{project}'/60'`, `m/{project}'/195'`): it derives
-  addresses but cannot spend. The sweepers hold the master key (`HDPAY_MASTER_XPRV`, the root): they are
+  addresses but cannot spend. The sweepers hold the master key (`HDPAY_ROOT_XPRV`, the root): they are
   the only processes that can move funds. Because the project level is hardened, a project's xpubs can
   only be made from the master key, so they are exported once, on the sweeper host:
 
@@ -229,7 +229,7 @@ python -m api.keys master --save
 ```
 
 It asks for your recovery phrase (hidden; leave it empty to create a new wallet, whose phrase is shown
-once) and writes only `HDPAY_MASTER_XPRV=` to `envs/sweeper.env`, in any shell. Keep the phrase offline:
+once) and writes only `HDPAY_ROOT_XPRV=` to `envs/sweeper.env`, in any shell. Keep the phrase offline:
 the services never need it, and `envs/sweeper.env` never goes on the API host.
 
 **The first user**, on the API host, as the owner:
@@ -262,7 +262,7 @@ committed `.example` template):
 | File                  | Read by                        | Holds                                                    |
 |-----------------------|--------------------------------|----------------------------------------------------------|
 | `envs/common.env`     | api, watchers, sweepers        | MongoDB, chains and RPC overrides, project defaults, and the API's sign-in secret, port and browser origins |
-| `envs/sweeper.env`    | sweepers (and `api.keys`)      | `HDPAY_MASTER_XPRV`, the master key, and nothing else    |
+| `envs/sweeper.env`    | sweepers (and `api.keys`)      | `HDPAY_ROOT_XPRV`, the master key, and nothing else    |
 
 Run locally, every process reads both; in Docker only the sweepers get `sweeper.env`, so the API never
 holds the master key. A variable set in the environment wins over the files.
@@ -288,7 +288,7 @@ holds the master key. A variable set in the environment wins over the files.
 | `HDPAY_CORS_ORIGINS`             | the admin dev server        | JSON list of browser origins allowed to call the API |
 | `HDPAY_CHAINS_FILE`              | `chains.yaml`               | Chains and tokens (see above)              |
 | `HDPAY_RPC_URL_<KEY>`            | the file's `rpc_url`        | e.g. `HDPAY_RPC_URL_BSC`, `HDPAY_RPC_URL_TRON_NILE` |
-| `HDPAY_MASTER_XPRV`              |                             | **Sweepers only**, in `envs/sweeper.env`: the root key |
+| `HDPAY_ROOT_XPRV`              |                             | **Sweepers only**, in `envs/sweeper.env`: the root key |
 
 ## Running
 
@@ -296,7 +296,7 @@ holds the master key. A variable set in the environment wins over the files.
 python -m api                          # http://localhost:8090, docs at /docs
 python -m watcher --chain tron         # one per chain any project accepts
 python -m watcher --chain bsc
-python -m sweeper --chain tron         # on the host that holds HDPAY_MASTER_XPRV
+python -m sweeper --chain tron         # on the host that holds HDPAY_ROOT_XPRV
 python -m sweeper --chain bsc
 ```
 

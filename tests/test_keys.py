@@ -64,6 +64,25 @@ def test_only_a_root_key_is_a_master_key():
         check_master_key(child.xprivate_key())
 
 
+@pytest.mark.parametrize("key, problem", [
+    ("not-a-key", "not a valid extended key"),
+    ("", "not a valid extended key"),
+])
+def test_a_master_key_must_be_an_extended_key(key, problem):
+    with pytest.raises(RuntimeError, match=problem):
+        check_master_key(key)
+
+
+def test_a_public_root_key_is_not_a_master_key():
+    from hdwallet import HDWallet
+    from hdwallet.hds import BIP32HD
+
+    root_xpub = HDWallet(cryptocurrency=Ethereum, hd=BIP32HD, network=Ethereum.NETWORKS.MAINNET)         .from_xprivate_key(xprivate_key=MASTER).root_xpublic_key()
+    with pytest.raises(RuntimeError, match="private key") as refused:
+        check_master_key(root_xpub)
+    assert root_xpub not in str(refused.value)
+
+
 def test_a_key_from_the_wrong_family_or_level_is_refused():
     with pytest.raises(ValueError, match="m/<project>'/60'"):
         check_project_xpub(Family.EVM, project_xpub(MASTER, NUMBER, Family.TRON))
@@ -91,3 +110,16 @@ def test_a_path_is_its_moment_to_the_microsecond():
     xpub = project_xpub(MASTER, NUMBER, Family.TRON)
     assert address_at(Family.TRON, xpub, 42, AT) != address_at(Family.TRON, xpub, 42, later)
     assert full_path(NUMBER, Family.EVM, 0, datetime(2094, 1, 19, 3, 14, 7)).endswith("/2147483647/0")   # the last one
+
+
+def test_the_root_key_setting_and_its_old_name(monkeypatch):
+    from api.config import Settings
+
+    monkeypatch.delenv("HDPAY_ROOT_XPRV", raising=False)
+    monkeypatch.setenv("HDPAY_ROOT_XPRV", MASTER)
+    assert Settings(_env_file=None).root_xprv == MASTER
+    monkeypatch.delenv("HDPAY_ROOT_XPRV")
+    monkeypatch.setenv("HDPAY_MASTER_XPRV", MASTER)               # its name before 0.6.0, still read
+    assert Settings(_env_file=None).root_xprv == MASTER
+    monkeypatch.setenv("HDPAY_ROOT_XPRV", "the new name wins")
+    assert Settings(_env_file=None).root_xprv == "the new name wins"

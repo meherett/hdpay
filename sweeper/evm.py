@@ -73,7 +73,7 @@ class EvmSweeper(Sweeper):
         return Web3.to_hex(self.w3.eth.send_raw_transaction(signed.raw_transaction))
 
     def _account(self, d: Deposit):
-        key = private_key_for_path(self.chain.family, self.master_xprv, d.path)
+        key = private_key_for_path(self.chain.family, self.root_xprv, d.path)
         account = Account.from_key(key)
         if account.address.lower() != d.address.lower():
             raise RuntimeError(f"derivation mismatch at {d.path}")
@@ -124,7 +124,7 @@ class EvmSweeper(Sweeper):
 
     def _funder(self, number: int):
         """The project's fee funder, m/{project}'/{coin}'."""
-        return Account.from_key(funder_private_key(self.chain.family, self.master_xprv, number))
+        return Account.from_key(funder_private_key(self.chain.family, self.root_xprv, number))
 
     def _top_up(self, d: Deposit, number: int, to: str, amount: int, fee_fields: dict, gas_price: int) -> None:
         funder = self._funder(number)

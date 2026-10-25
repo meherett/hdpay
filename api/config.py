@@ -3,6 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import dotenv_values
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -55,7 +56,8 @@ class Settings(BaseSettings):
 
     # Root key (m, depth 0) of the HD wallet: sweeper host and `python -m api.keys` only, never the API.
     # Every project's addresses and fee funders are derived from it under m/<project number>'/<coin>'.
-    master_xprv: str = ""
+    # HDPAY_ROOT_XPRV; HDPAY_MASTER_XPRV, its name before, is still read when it is not set
+    root_xprv: str = Field(default="", validation_alias=AliasChoices("HDPAY_ROOT_XPRV", "HDPAY_MASTER_XPRV"))
 
     # chains and tokens (YAML); empty means chains.yaml next to the hdpay package (else chains.example.yaml).
     # Each chain's RPC is read from HDPAY_RPC_URL_<KEY>, falling back to the file's public default.

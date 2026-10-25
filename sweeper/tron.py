@@ -54,7 +54,7 @@ class TronSweeper(Sweeper):
             return 0
 
     def _key(self, d: Deposit) -> PrivateKey:
-        hex_key = private_key_for_path(self.chain.family, self.master_xprv, d.path)
+        hex_key = private_key_for_path(self.chain.family, self.root_xprv, d.path)
         key = PrivateKey(bytes.fromhex(hex_key))
         if key.public_key.to_base58check_address() != d.address:
             raise RuntimeError(f"derivation mismatch at {d.path}")
@@ -121,7 +121,7 @@ class TronSweeper(Sweeper):
 
     def _funder_key(self, number: int) -> PrivateKey:
         """The project's fee funder, m/{project}'/{coin}'."""
-        return PrivateKey(bytes.fromhex(funder_private_key(self.chain.family, self.master_xprv, number)))
+        return PrivateKey(bytes.fromhex(funder_private_key(self.chain.family, self.root_xprv, number)))
 
     def _top_up(self, d: Deposit, number: int, amount: int) -> None:
         funder_key = self._funder_key(number)

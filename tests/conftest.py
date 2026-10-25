@@ -12,7 +12,7 @@ os.environ["HDPAY_AMOUNT_TOLERANCE_BPS"] = "50"
 
 from factories import MASTER  # noqa: E402  (needs the settings above)
 
-os.environ["HDPAY_MASTER_XPRV"] = MASTER
+os.environ["HDPAY_ROOT_XPRV"] = MASTER
 
 import mongomock  # noqa: E402
 import pytest  # noqa: E402
