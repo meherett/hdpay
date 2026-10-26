@@ -93,6 +93,20 @@
         <p class="muted">
           This page updates by itself. Your payment counts after {{ d.confirmations }} confirmations.
         </p>
+        <div class="center">
+          <button
+            nz-button
+            nzType="link"
+            [nzLoading]="cancelling()"
+            nz-popconfirm
+            nzPopconfirmTitle="Cancel this address and choose another network? Do not send anything to it after."
+            nzOkText="Cancel it"
+            nzCancelText="Keep it"
+            (nzOnConfirm)="cancel()">
+            <nz-icon nzType="swap" />
+            Cancel and choose another network
+          </button>
+        </div>
       }
 
       @case ('expired') {
@@ -108,6 +122,21 @@
           </div>
         </nz-result>
         <p class="muted center">Expired address: <code>{{ d.address }}</code></p>
+      }
+
+      @case ('cancelled') {
+        <nz-result
+          nzIcon="close-circle"
+          nzTitle="This payment was cancelled"
+          nzSubTitle="Do not send anything to this address. If you already did, it is still received and the shop will be told.">
+          <div nz-result-extra>
+            <button nz-button nzType="primary" (click)="again(d)">
+              <nz-icon nzType="swap" />
+              Choose how to pay
+            </button>
+          </div>
+        </nz-result>
+        <p class="muted center">Cancelled address: <code>{{ d.address }}</code></p>
       }
 
       @case ('partial') {

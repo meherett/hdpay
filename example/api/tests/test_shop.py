@@ -60,6 +60,14 @@ class FakeHDPay:
             self.next_id += 1
             self.deposits[d["id"]] = d
             return httpx.Response(200, json=d)
+        if path.startswith("/v1/deposits/") and path.endswith("/cancel") and request.method == "POST":
+            d = self.deposits.get(path.split("/")[3])
+            if d is None:
+                return httpx.Response(404, json={"detail": "deposit not found"})
+            if d["status"] != "pending":
+                return httpx.Response(409, json={"detail": f"deposit is {d['status']}: only a pending deposit can be cancelled"})
+            d["status"] = "cancelled"
+            return httpx.Response(200, json=d)
         if path.startswith("/v1/deposits/"):
             d = self.deposits.get(path.rsplit("/", 1)[1])
             return httpx.Response(200, json=d) if d else httpx.Response(404, json={"detail": "Deposit not found"})
@@ -244,3 +252,23 @@ def test_a_custom_buyer_orders_without_becoming_a_user(client, fake):
     ):
         reply = client.post("/orders", json=body | change)
         assert reply.status_code == 422 and problem in reply.text
+
+
+def test_the_customer_cancels_a_pending_address_to_pay_another_way(client, fake):
+    placed = client.post("/orders", json=ORDER).json()
+    cancelled = client.post(f"/orders/{placed['id']}/cancel")
+    assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+    # then another network: a new order, a new address
+    other = client.post("/orders", json=ORDER | {"chain": "bsc-testnet"}).json()
+    assert other["id"] != placed["id"]
+
+
+def test_only_a_pending_address_is_cancelled(client, fake):
+    placed = client.post("/orders", json=ORDER).json()
+    fake.deposits[placed["id"]]["status"] = "confirming"
+    reply = client.post(f"/orders/{placed['id']}/cancel")
+    assert reply.status_code == 409 and "only a pending deposit" in reply.text
+
+
+def test_an_unknown_order_is_not_cancelled(client):
+    assert client.post("/orders/nope/cancel").status_code == 404

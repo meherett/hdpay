@@ -9,6 +9,7 @@ import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzCardModule } from 'ng-zorro-antd/card';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzMessageService } from 'ng-zorro-antd/message';
+import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzQRCodeModule } from 'ng-zorro-antd/qr-code';
 import { NzResultModule } from 'ng-zorro-antd/result';
 import { NzSkeletonModule } from 'ng-zorro-antd/skeleton';
@@ -33,6 +34,7 @@ const POLL_MS = 5000;
     NzButtonModule,
     NzCardModule,
     NzIconModule,
+    NzPopconfirmModule,
     NzQRCodeModule,
     NzResultModule,
     NzSkeletonModule,
@@ -57,6 +59,7 @@ export class PayComponent {
   protected readonly notFound = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly renewing = signal(false);
+  protected readonly cancelling = signal(false);
   private readonly now = signal(Date.now());
 
   protected readonly secondsLeft = computed(() => {
@@ -222,6 +225,33 @@ export class PayComponent {
           this.message.error(errorMessage(response));
         }
       });
+  }
+
+  /**
+   * Cancel this pending address and go back to the checkout, on the payment step with the same buyer
+   * and product, to choose another network or coin. Anything already sent to it is still counted.
+   */
+  protected cancel(): void {
+    const d = this.deposit();
+    if (!d) {
+      return;
+    }
+    this.cancelling.set(true);
+    this.depositService.cancel(d.id).subscribe({
+      next: () => {
+        this.cancelling.set(false);
+        this.again(d);
+      },
+      error: (response: HttpErrorResponse) => {
+        this.cancelling.set(false);
+        this.message.error(errorMessage(response));
+      }
+    });
+  }
+
+  /** Back to the checkout with the same buyer and product, to choose how to pay. */
+  protected again(d: DepositInterface): void {
+    void this.router.navigate(['/'], { state: { again: { account_id: d.account_id, product: d.product } } });
   }
 
   protected copy(value: string, what: string): void {

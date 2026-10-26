@@ -213,19 +213,48 @@ export class HomeComponent {
     () => [!!this.user(), !!this.product() && this.discountOk() && !!this.method(), true][this.step()]
   );
 
+  /** Back from a cancelled payment: the same buyer and product, to choose how to pay (history state). */
+  private again: { account_id: string; product: string | null } | null =
+    (history.state as { again?: { account_id: string; product: string | null } } | null)?.again ?? null;
+
+  /** Once the buyer is in a list: choose them and the product, and go on to the payment step. */
+  private resume(): void {
+    const again = this.again;
+    if (!again) {
+      return;
+    }
+    const value = this.users().some((u) => u.account_id === again.account_id)
+      ? again.account_id
+      : this.fileUsers().some((u) => u.account_id === again.account_id)
+        ? this.FILE + again.account_id
+        : null;
+    if (value === null) {
+      return;   // a custom buyer, typed in: they choose again
+    }
+    this.again = null;
+    this.formGroup.patchValue({ account_id: value, product: again.product, chain: null, asset: null });
+    this.step.set(1);
+  }
+
   constructor() {
     this.title.setTitle('HDPay - Checkout');
 
     this.userService
       .fromFile()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((users) => this.fileUsers.set(users));
+      .subscribe((users) => {
+        this.fileUsers.set(users);
+        this.resume();
+      });
 
     this.userService
       .list()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (users) => this.users.set(users),
+        next: (users) => {
+          this.users.set(users);
+          this.resume();
+        },
         error: (response: HttpErrorResponse) => this.error.set(errorMessage(response))
       });
 

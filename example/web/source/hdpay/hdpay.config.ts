@@ -7,6 +7,7 @@ import {
   CheckCircleOutline,
   ClockCircleFill,
   ClockCircleOutline,
+  CloseCircleOutline,
   CopyOutline,
   ExportOutline,
   InfoCircleOutline,
@@ -15,6 +16,7 @@ import {
   SafetyOutline,
   ReloadOutline,
   SearchOutline,
+  SwapOutline,
   UserOutline,
   WalletOutline,
   WarningOutline
@@ -29,6 +31,7 @@ const icons = [
   CheckCircleOutline,
   ClockCircleFill,
   ClockCircleOutline,
+  CloseCircleOutline,
   CopyOutline,
   ExportOutline,
   InfoCircleOutline,
@@ -37,6 +40,7 @@ const icons = [
   SafetyOutline,
   ReloadOutline,
   SearchOutline,
+  SwapOutline,
   UserOutline,
   WalletOutline,
   WarningOutline

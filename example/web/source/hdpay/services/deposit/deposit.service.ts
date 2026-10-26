@@ -22,6 +22,11 @@ export class DepositService extends APIService {
     return this.get<DepositInterface>(encodeURIComponent(id));
   }
 
+  /** The customer gives up on a pending address, to pay another way; anything sent to it still counts. */
+  public cancel(id: string): Observable<DepositInterface> {
+    return this.create<DepositInterface>({}, undefined, `/${encodeURIComponent(id)}/cancel`);
+  }
+
   /** A new address for an expired order: same account, product, network, asset and email. */
   public renew(id: string): Observable<DepositInterface> {
     return this.create<DepositInterface>({}, undefined, `/${encodeURIComponent(id)}/renew`);

@@ -1,5 +1,5 @@
 /** What the customer is told; the API maps its internal states onto these. */
-export type DepositStatus = 'pending' | 'expired' | 'confirming' | 'partial' | 'paid' | 'contact_support';
+export type DepositStatus = 'pending' | 'expired' | 'cancelled' | 'confirming' | 'partial' | 'paid' | 'contact_support';
 
 /** A product discount the deposit opened with; see the admin for what each status means. */
 export interface DiscountInterface {

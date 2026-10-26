@@ -47,6 +47,10 @@ class HDPay:
     def deposit(self, deposit_id: str) -> dict[str, Any]:
         return self._call("GET", f"/deposits/{deposit_id}")
 
+    def cancel(self, deposit_id: str) -> dict[str, Any]:
+        """Cancel a pending deposit (409 once anything arrived); its address stays watched by HDPay."""
+        return self._call("POST", f"/deposits/{deposit_id}/cancel")
+
     def _call(self, method: str, path: str, **kwargs: Any) -> Any:
         if not self.secret_key:
             raise HDPayError(503, "The shop is not set up yet: put the project's secret key in HDPAY_SECRET_KEY.")

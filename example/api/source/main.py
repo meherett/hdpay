@@ -9,6 +9,7 @@ The example shop's API, for its web page. It holds the HDPay secret key; the pag
                                  a payment address, at the product's price less the discount
     GET  /orders/{id}            the order's payment, for the payment page
     POST /orders/{id}/renew      a fresh address after the old one expired
+    POST /orders/{id}/cancel     the customer gives up on a pending address, to pay another way
     POST /auth/login             {email, password}: a session token and the user
     GET  /auth/me                the signed-in user (Authorization: Bearer <token>)
     POST /auth/logout            ends the session
@@ -195,5 +196,9 @@ def create_app(settings: Settings | None = None, hdpay: HDPay | None = None, fol
             email = shop.store.order(deposit["id"])["email"]
             background.add_task(shop.send_address, email, deposit)
         return public(deposit)
+
+    @app.post("/orders/{deposit_id}/cancel")
+    def cancel(deposit_id: str) -> dict[str, Any]:
+        return public(shop.cancel(deposit_id))
 
     return app

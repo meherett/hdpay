@@ -98,6 +98,12 @@ class Shop:
             body |= {"discount_percent": discount["percent"], "discount_ends_at": discount["ends_at"]}
         return self.place(order["email"], body)
 
+    def cancel(self, deposit_id: str) -> dict[str, Any]:
+        """The customer gave up on this address, to pay another way: HDPay cancels it while it is pending."""
+        if self.store.order(deposit_id) is None:
+            raise HDPayError(404, "No such order")
+        return self.hdpay.cancel(deposit_id)
+
     def send_address(self, email: str, deposit: dict[str, Any]) -> None:
         try:
             self.mailer.send(email, *emails.created(deposit, self.settings))
