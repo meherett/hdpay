@@ -1,4 +1,4 @@
-export type InternalStatus = 'pending' | 'expired' | 'detected' | 'partial' | 'confirmed' | 'review' | 'swept';
+export type InternalStatus = 'pending' | 'expired' | 'cancelled' | 'detected' | 'partial' | 'confirmed' | 'review' | 'swept';
 
 /**
  * The discount a deposit was opened with, given by the project for that customer: active while it
@@ -73,6 +73,8 @@ export interface DepositInterface {
   /** ERC20 / TRC20 for a token; null for the native coin */
   standard: string | null;
   decimals: number;
+  /** When the project cancelled it while pending (POST /v1/deposits/{id}/cancel); null otherwise. */
+  cancelled_at?: string | null;
   /** The moment in the derivation path, to the microsecond (ISO, UTC); null for a deposit from before 0.3.0. */
   derived_at: string | null;
   /** Before 0.3.0: the UTC day in the path (yyyy-mm-dd) and the account's index for that day. */

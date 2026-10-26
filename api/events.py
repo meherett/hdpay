@@ -16,6 +16,7 @@ Delivery is at least once: a project ignores an event id it has already handled.
     deposit.swept       the funds reached the project's treasury
     deposit.discount_expired  a product discount ended before the deposit was paid: the full price is due
     deposit.deleted     expired with nothing received, and deleted after HDPAY_EXPIRED_DELETE_AFTER_HOURS
+    deposit.cancelled   the project cancelled it while pending; its address is still watched
 
 Events are kept for HDPAY_EVENT_RETENTION_DAYS.
 """
@@ -33,6 +34,7 @@ EVENT_FOR_STATUS = {
     Status.CONFIRMED: "deposit.confirmed",
     Status.REVIEW: "deposit.review",
     Status.EXPIRED: "deposit.expired",
+    Status.CANCELLED: "deposit.cancelled",
     Status.SWEPT: "deposit.swept",
 }
 TYPES = ("deposit.created", "deposit.reopened", "deposit.discount_expired", "deposit.deleted", *EVENT_FOR_STATUS.values())

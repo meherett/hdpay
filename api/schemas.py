@@ -16,6 +16,7 @@ from .keys import MAX_INDEX
 PUBLIC_STATUS = {
     Status.PENDING: "pending",
     Status.EXPIRED: "expired",
+    Status.CANCELLED: "cancelled",
     Status.DETECTED: "confirming",
     Status.PARTIAL: "partial",
     Status.CONFIRMED: "paid",
@@ -515,6 +516,7 @@ class ProjectDepositOut(DepositOut):
     confirmed_at: str | None
     swept_at: str | None
     sweep_tx_hash: str | None
+    cancelled_at: str | None = None   # when the project cancelled it (POST /v1/deposits/{id}/cancel)
 
     @classmethod
     def from_deposit(cls, d: Deposit, project: dict[str, Any] | None, **extra: Any) -> "ProjectDepositOut":
@@ -522,6 +524,7 @@ class ProjectDepositOut(DepositOut):
             d, project,
             internal_status=d.status, difference=d.difference, late=d.late, confirmed_at=utc(d.confirmed_at),
             swept_at=utc(d.swept_at), sweep_tx_hash=d.sweep_tx_hash,
+            cancelled_at=utc(d.cancelled_at) if d.has("cancelled_at") else None,
             **extra,
         )
 

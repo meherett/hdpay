@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
+from pymongo import ReturnDocument
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
@@ -20,6 +21,33 @@ def get_deposit_or_404(db: Database, deposit_id: str, project_id: str | None = N
     if deposit is None or (project_id is not None and deposit.project_id != project_id):
         raise HTTPException(404, "deposit not found")
     return deposit
+
+
+def cancel_deposit(db: Database, project: dict[str, Any], deposit_id: str) -> Deposit:
+    """The project no longer wants this payment: a pending deposit, with nothing received, becomes
+    cancelled. Its address stays watched, like an expired one, so a payment already on its way is still
+    counted and reported, never lost; with nothing received it is deleted like an expired one.
+    expires_at moves to now: a payment made before the cancel is on time, one after it is late.
+
+    Only a pending deposit: one that received anything, or ended, is not the project's to cancel. Asking
+    again for one it already cancelled returns it unchanged, so a retry is safe.
+    """
+    deposit = get_deposit_or_404(db, deposit_id, project["_id"])
+    now = utcnow()
+    # in one step, so a payment the watcher records at the same moment is never overwritten
+    done = db.deposits.find_one_and_update(
+        {"_id": deposit.id, "project_id": project["_id"], "status": Status.PENDING.value, "received_amount": "0"},
+        {"$set": {"status": Status.CANCELLED.value, "expires_at": now, "cancelled_at": now, "updated_at": now}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if done is None:
+        current = get_deposit_or_404(db, deposit_id, project["_id"])
+        if current.status == Status.CANCELLED:
+            return current   # cancelled already
+        raise HTTPException(409, f"deposit is {current.status.value}: only a pending deposit can be cancelled")
+    cancelled = Deposit(done)
+    notify(db, cancelled, "deposit.cancelled", project)
+    return cancelled
 
 
 def notify(db: Database, deposit: Deposit, event_type: str, project: dict[str, Any] | None = None) -> None:

@@ -678,7 +678,7 @@ def get_deposit(deposit_id: str, user: CurrentUser, db: DB):
 
 
 # a check can be asked for while the money may still be on its way or in question; a paid deposit is done
-CHECKABLE = (Status.PENDING, Status.EXPIRED, Status.DETECTED, Status.PARTIAL, Status.REVIEW)
+CHECKABLE = (Status.PENDING, Status.EXPIRED, Status.CANCELLED, Status.DETECTED, Status.PARTIAL, Status.REVIEW)
 
 
 @router.post("/deposits/{deposit_id}/check", response_model=AdminDepositOut)
@@ -738,9 +738,9 @@ def reopen_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB, body: Reo
     body = body or ReopenDeposit()
     deposit = _deposit_or_404(db, deposit_id, admin)
     project = get_project(db, deposit.project_id)
-    if deposit.status not in (Status.REVIEW, Status.EXPIRED):
-        raise HTTPException(409, f"deposit is {deposit.status.value}: only one in review or expired can be reopened")
-    expired = deposit.status == Status.EXPIRED
+    if deposit.status not in (Status.REVIEW, Status.EXPIRED, Status.CANCELLED):
+        raise HTTPException(409, f"deposit is {deposit.status.value}: only one in review, expired or cancelled can be reopened")
+    expired = deposit.status in (Status.EXPIRED, Status.CANCELLED)
     if not deposit.expected_amount and not expired:
         raise HTTPException(409, "deposit accepts any amount, so there is no rest to wait for")
     if body.product is not None:
@@ -775,6 +775,8 @@ def reopen_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB, body: Reo
         minutes = body.minutes or setting(project or {}, "deposit_ttl_minutes")
         deposit.expires_at = deposit.window_ends_at = utcnow() + timedelta(minutes=minutes)
         deposit.late = False
+        if deposit.status == Status.CANCELLED:
+            deposit.cancelled_at = None   # support took it back: it is no longer cancelled
         deposit.status = Status.PENDING
     else:
         minutes = body.minutes or setting(project or {}, "remainder_window_minutes")

@@ -11,6 +11,7 @@ paid. The funds are swept to your project's treasury automatically.
 - [Live networks](#live-networks)
 - [Opening a payment](#opening-a-payment)
 - [Reading payments](#reading-payments)
+- [Cancelling a payment](#cancelling-a-payment)
 - [Events](#events)
 - [Payment flows](#payment-flows)
 - [Discounts](#discounts)
@@ -93,6 +94,7 @@ A payment carries two: `internal_status` for your backend, and `status`, which y
 |---|---|---|
 | `pending` | `pending` | Address issued, waiting for payment. |
 | `expired` | `expired` | The payment window ended with nothing received. Still watched: a late payment still counts (`late: true`), until the deposit is deleted (`deposit.deleted`, 15 days after it expired by default). |
+| `cancelled` | `cancelled` | You cancelled it while it was pending (`POST /v1/deposits/{id}/cancel`). Still watched, like `expired`: a payment sent anyway still counts, and it is deleted the same way. |
 | `detected` | `confirming` | A payment arrived and is waiting for confirmations. |
 | `partial` | `partial` | Confirmed, but short. The rest can come to the same address until `expires_at`. |
 | `confirmed` | `paid` | Paid in full. **Credit the order now.** |
@@ -211,6 +213,42 @@ curl "https://api.hdpay.systems/v1/deposits?account_id=1006&status=confirmed&lim
 
 ---
 
+## Cancelling a payment
+
+When the customer gives up, or your order is cancelled, tell HDPay you no longer want the payment:
+
+```
+POST /v1/deposits/{id}/cancel          secret key only
+```
+
+```bash
+curl -X POST "https://api.hdpay.systems/v1/deposits/2f0c…/cancel"   -H "Authorization: Bearer hdp_sk_your_secret_key"
+```
+
+It works **only on a `pending` payment that has received nothing**. The payment becomes `cancelled`
+(`status` and `internal_status`), the reply is the payment in the usual shape with `cancelled_at` set, and
+you get a `deposit.cancelled` event.
+
+| The payment is… | Reply |
+|---|---|
+| `pending`, nothing received | `200`: now `cancelled`, with `cancelled_at` |
+| cancelled already | `200`: the same payment again, nothing changes, so a retry is safe |
+| anything else: `detected`, `partial`, `confirmed`, `review`, `swept`, or `expired` by its own timer | `409`: deposit is …: only a pending deposit can be cancelled |
+
+**Good to know**
+
+- **The address is still watched.** A customer may have sent the money a moment before you cancelled. If it
+  arrives, HDPay counts it and you get `deposit.detected`, then `deposit.confirmed` (or `deposit.partial`):
+  `late: false` if it was sent before you cancelled, `late: true` after. Deliver the order or refund it: the
+  money is never lost.
+- **Opening a payment again** for the same customer, network, coin and product gives a **new address**: a
+  cancelled payment is never handed out again.
+- A cancelled payment that receives nothing is deleted after 15 days, like an expired one
+  (`deposit.deleted`). HDPay support can also reopen it (back to `pending`) if your customer asks.
+- **Secret key only.** A publishable key, which is in browsers, gets `403`: cancel from your server.
+
+---
+
 ## Events
 
 Everything that happens to your payments is an event, numbered in order (`seq`). Each event carries the
@@ -259,6 +297,7 @@ curl -X POST https://api.hdpay.systems/v1/events/ack \
 | `deposit.partial` | Confirmed, but short. | Ask for the rest by `expires_at`. |
 | `deposit.confirmed` | Paid in full, or credited by support. | **Credit the order.** Thank the customer. |
 | `deposit.expired` | The window ended with nothing received. | Tell the customer; they can start again. |
+| `deposit.cancelled` | You cancelled it while it was pending (`POST /v1/deposits/{id}/cancel`). It is `cancelled` now, with `cancelled_at`. | Nothing: you asked for it. If `deposit.detected` follows, the customer had already paid. |
 | `deposit.deleted` | It expired with nothing received and was deleted (by default 15 days after it expired). The address is no longer watched, and `GET /v1/deposits/{id}` returns 404. | Drop the order, or let the customer start again. |
 | `deposit.review` | The rest of a short payment never came. | Ask the customer to contact support. |
 | `deposit.reopened` | Support gave the customer more time: for the rest of a short payment (`partial`), or for the whole payment after it expired (`pending` again, same address). | Ask for the payment, or the rest, by the new `expires_at`. |
@@ -347,6 +386,7 @@ Errors are JSON: `{"detail": "…"}`. Show your own message to customers; log HD
 | 403 | Project disabled or not set up yet | This project is not active |
 | 403 | Your IP is not allowed | Requests from 203.0.113.9 are not allowed for this project |
 | 404 | Unknown payment, or another project's | deposit not found |
+| 409 | Cancelling a payment that is not `pending`, or received something | deposit is detected: only a pending deposit can be cancelled |
 | 422 | Network not accepted | this project does not accept 'solana'; it accepts … |
 | 422 | Coin not accepted there | this project accepts TRX, USDT on Tron Nile Testnet, not 'USDC' |
 | 422 | Unknown product | product must be one of 10k, 100k |

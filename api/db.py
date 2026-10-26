@@ -103,6 +103,7 @@ def set_counter(db: Database, key: str, value: int) -> None:
 class Status(str, enum.Enum):
     PENDING = "pending"            # address issued, inside its payment window
     EXPIRED = "expired"            # window passed, nothing received: STILL WATCHED
+    CANCELLED = "cancelled"        # the project cancelled it while pending, nothing received: STILL WATCHED
     DETECTED = "detected"          # payment seen, waiting for confirmations
     PARTIAL = "partial"            # underpaid and confirmed; the rest may still arrive until expires_at
     CONFIRMED = "confirmed"        # credited to the account

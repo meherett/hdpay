@@ -6,6 +6,7 @@ Every route needs the project's API key: Authorization: Bearer hdp_sk_... (or hd
     GET  /v1/chains                 networks and assets the project accepts           secret or publishable
     GET  /v1/products               the project's products                            secret or publishable
     POST /v1/deposits               open a deposit (or get the account's open one)    secret or publishable
+    POST /v1/deposits/{id}/cancel   cancel a pending deposit                          secret
     GET  /v1/deposits/{id}          one of the project's deposits                     secret or publishable
     GET  /v1/deposits               the project's deposits, newest first              secret
     GET  /v1/events?after=<seq>     events after a sequence (default: the last acked)  secret
@@ -28,7 +29,7 @@ from pymongo.database import Database
 from . import events
 from .apikeys import SECRET, AnyKeyProject, SecretKeyProject, authenticate
 from .db import Deposit, Status, get_db
-from .deposits import get_deposit_or_404, open_deposit
+from .deposits import cancel_deposit, get_deposit_or_404, open_deposit
 from .projects import USD_STABLECOINS, accepted, get_project
 from .schemas import (
     Acknowledge,
@@ -83,6 +84,14 @@ def create_deposit(body: CreateDeposit, project: AnyKeyProject, db: DB):
     """Opens a deposit for account_id, trusting it as given: only the project's backend, or a checkout
     page it serves, should hold a key."""
     return ProjectDepositOut.from_deposit(open_deposit(db, project, body), project)
+
+
+@router.post("/deposits/{deposit_id}/cancel", response_model=ProjectDepositOut)
+def cancel(deposit_id: str, project: SecretKeyProject, db: DB):
+    """Cancel a pending deposit, with nothing received: it becomes cancelled, and the project gets
+    deposit.cancelled. 409 for any other status. The address stays watched: a payment already sent is
+    still counted. Secret key only: a publishable key is in a browser."""
+    return ProjectDepositOut.from_deposit(cancel_deposit(db, project, deposit_id), project)
 
 
 @router.get("/deposits/{deposit_id}", response_model=ProjectDepositOut)

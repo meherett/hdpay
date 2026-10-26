@@ -223,3 +223,10 @@ def test_tron_url_drops_jsonrpc_suffix():
 
     assert tron_http_url("https://x.tron-nile.quiknode.pro/abc/jsonrpc") == "https://x.tron-nile.quiknode.pro/abc/"
     assert tron_http_url("https://nile.trongrid.io") == "https://nile.trongrid.io/"
+
+
+def test_support_reopens_a_cancelled_deposit_as_pending(client, admin, mongo, project):
+    d = open_deposit(client, mongo, project, expected_amount=10_000_000)
+    assert client.post(f"/v1/deposits/{d['id']}/cancel", headers=key_headers(mongo, project)).json()["internal_status"] == "cancelled"
+    reply = client.post(f"/admin/deposits/{d['id']}/reopen", headers=admin).json()
+    assert (reply["internal_status"], reply["cancelled_at"]) == ("pending", None)

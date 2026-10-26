@@ -82,6 +82,21 @@
     </ng-template>
   }
 
+  @if (d.internal_status === 'cancelled') {
+    <nz-alert
+      class="block"
+      nzType="info"
+      nzShowIcon
+      nzMessage="Cancelled by the project"
+      [nzDescription]="cancelledNote"
+      [nzAction]="expiredActions" />
+    <ng-template #cancelledNote>
+      The project cancelled this payment while it was pending{{ d.cancelled_at ? ', on ' + (d.cancelled_at | date: 'MMM d, y h:mm a') : '' }}.
+      The address is still watched: a payment sent anyway is counted (late) and the project is told. To let the
+      customer pay after all, <strong>Reopen</strong> it: back to pending, with a new countdown.
+    </ng-template>
+  }
+
   @if (d.internal_status === 'partial') {
     <nz-alert
       class="block"

@@ -4,6 +4,7 @@ import { InternalStatus, ProjectStatus } from '../services/api.interface';
 export const STATUS: Record<InternalStatus, { color: string; label: string; hint: string }> = {
   pending: { color: 'blue', label: 'pending', hint: 'Address issued, inside its payment window' },
   expired: { color: 'default', label: 'expired', hint: 'Window closed with nothing received. Still watched.' },
+  cancelled: { color: 'default', label: 'cancelled', hint: 'The project cancelled it while pending. Still watched.' },
   detected: { color: 'orange', label: 'detected', hint: 'Payment seen, waiting for confirmations' },
   partial: { color: 'gold', label: 'partial', hint: 'Underpaid. The rest can still arrive until the window ends' },
   confirmed: { color: 'green', label: 'confirmed', hint: 'Credited, waiting to be swept' },

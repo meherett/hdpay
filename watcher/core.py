@@ -48,7 +48,9 @@ from api.projects import projects_by_id, setting
 from .base import Scanner
 
 log = logging.getLogger("hdpay.watcher")
-WATCHED = (Status.PENDING, Status.EXPIRED, Status.DETECTED, Status.PARTIAL)
+WATCHED = (Status.PENDING, Status.EXPIRED, Status.CANCELLED, Status.DETECTED, Status.PARTIAL)
+# closed with nothing received, still watched: a payment to one is counted late
+CLOSED = (Status.EXPIRED, Status.CANCELLED)
 MAX_BLOCKS_PER_LOOP = 50
 # a support check rescans its address in pieces this long
 CHECK_CHUNK_BLOCKS = 500
@@ -93,8 +95,8 @@ def list_payment(d: Deposit, entry: dict[str, Any]) -> None:
 def as_of(d: Deposit, at: datetime) -> None:
     """The deposit's status as it was at `at` on the chain. A deposit marked expired or in review by
     the clock, while its payment was made before the deadline, is judged by the payment's time."""
-    if d.status == Status.EXPIRED and at <= d.expires_at:
-        d.status = Status.PENDING
+    if d.status in CLOSED and at <= d.expires_at:
+        d.status = Status.PENDING   # paid before it expired, or before it was cancelled: on time
     elif d.status == Status.REVIEW and at <= d.expires_at:
         d.status = Status.PARTIAL
     expire_one(d, at)
@@ -133,7 +135,7 @@ def record_payment(
     if d.status == Status.REVIEW:
         log.info("payment %s %s to %s after its remainder window: counted, still for support", amount, d.asset, d.address)
         return True
-    if d.status == Status.EXPIRED:
+    if d.status in CLOSED:
         d.late = True
     remainder = d.status == Status.PARTIAL
     d.status = Status.DETECTED
@@ -188,7 +190,7 @@ def balance_fallback(scanner: Scanner, block: int, watched: dict[str, Deposit], 
     Nothing is swept before a deposit is confirmed, so the balance is everything it received.
     """
     for address, d in watched.items():
-        if d.status in (Status.PENDING, Status.EXPIRED, Status.PARTIAL):
+        if d.status in (Status.PENDING, *CLOSED, Status.PARTIAL):
             count_balance(scanner, address, d, block, block_time)
 
 
@@ -230,7 +232,10 @@ def confirm(scanner: Scanner, latest: int, watched: dict[str, Deposit], projects
                 if int(kept) > 0:
                     d.status = Status.PARTIAL   # keeps its window; expire() closes it if that has passed
                 else:
-                    d.status = Status.EXPIRED if d.expires_at < utcnow() else Status.PENDING
+                    if d.has("cancelled_at") and d.cancelled_at:
+                        d.status = Status.CANCELLED
+                    else:
+                        d.status = Status.EXPIRED if d.expires_at < utcnow() else Status.PENDING
                 continue
         project = projects.get(d.project_id, {})
         already_partial = int(d.confirmed_amount or "0") > 0
@@ -448,10 +453,10 @@ def run_once(db: Database, scanner: Scanner, loops: int) -> bool:
 
 
 def deletable(d: Deposit, now: datetime) -> bool:
-    """Expired with nothing received, and long enough ago (HDPAY_EXPIRED_DELETE_AFTER_HOURS; 0: never)."""
+    """Expired or cancelled with nothing received, long enough ago (HDPAY_EXPIRED_DELETE_AFTER_HOURS; 0: never)."""
     hours = settings.expired_delete_after_hours
     return (
-        hours > 0 and d.status == Status.EXPIRED and int(d.received_amount) == 0 and not d.payments
+        hours > 0 and d.status in CLOSED and int(d.received_amount) == 0 and not d.payments
         and not (d.check and d.check.get("status") == "waiting")
         and d.expires_at <= now - timedelta(hours=hours)
     )
@@ -481,7 +486,9 @@ def delete_expired(db: Database, scanner: Scanner, latest: int, watched: dict[st
                 notify_status(db, d, projects.get(d.project_id))
             continue
         # only if nothing changed it meanwhile (a support check, a payment)
-        gone = db.deposits.delete_one({"_id": d.id, "status": Status.EXPIRED.value, "received_amount": "0"})
+        gone = db.deposits.delete_one(
+            {"_id": d.id, "status": {"$in": [s.value for s in CLOSED]}, "received_amount": "0"}
+        )
         if gone.deleted_count:
             notify(db, d, "deposit.deleted", projects.get(d.project_id))   # from the copy in hand
             deleted.append(d)

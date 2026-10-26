@@ -173,7 +173,7 @@ export class ReopenComponent {
 
   /** Expired with nothing received: it goes back to pending, with a new payment window. */
   protected expired(d: DepositInterface): boolean {
-    return d.internal_status === 'expired';
+    return d.internal_status === 'expired' || d.internal_status === 'cancelled';
   }
 
   /** An expired deposit that accepts any amount: no amount to set. */

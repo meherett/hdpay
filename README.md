@@ -137,6 +137,7 @@ pending -> expired -> detected -> confirmed -> swept
 |----------------|------------------------------------------------------------|---------------------|--------------------|
 | `pending`      | Address issued, inside the project's payment window        | `pending`           | `deposit.created`  |
 | `expired`      | Window passed with nothing received — **still watched**    | `expired`           | `deposit.expired`  |
+| `cancelled`    | The project cancelled it while pending — **still watched** | `cancelled`         | `deposit.cancelled`|
 | `detected`     | Payment seen, waiting for confirmations                    | `confirming`        | `deposit.detected` |
 | `partial`      | Underpaid; **watched** until the remainder window ends     | `partial`           | `deposit.partial`  |
 | `confirmed`    | Paid: credit the account                                   | `paid`              | `deposit.confirmed`|

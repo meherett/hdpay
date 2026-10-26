@@ -214,3 +214,54 @@ def test_a_project_lists_its_deposits(client, secret):
     create(client, secret, account_id="2")
     listed = client.get("/v1/deposits", headers=secret, params={"account_id": "2"}).json()
     assert [d["account_id"] for d in listed] == ["2"]
+
+
+# ---- a project cancels a pending deposit
+
+def cancel(client, headers, deposit_id):
+    return client.post(f"/v1/deposits/{deposit_id}/cancel", headers=headers)
+
+
+def test_a_pending_deposit_is_cancelled(client, mongo, secret):
+    d = create(client, secret).json()
+    reply = cancel(client, secret, d["id"])
+    assert reply.status_code == 200, reply.text
+    got = reply.json()
+    assert (got["internal_status"], got["status"], got["expires_in_seconds"]) == ("cancelled", "cancelled", 0)
+    assert got["cancelled_at"]
+    [event] = [e for e in mongo.events.find() if e["type"] == "deposit.cancelled"]
+    assert event["deposit"]["id"] == d["id"] and event["deposit"]["cancelled_at"] == got["cancelled_at"]
+    # asking again changes nothing: the same deposit, no second event
+    again = cancel(client, secret, d["id"])
+    assert again.status_code == 200 and again.json()["cancelled_at"] == got["cancelled_at"]
+    assert mongo.events.count_documents({"type": "deposit.cancelled"}) == 1
+    # the next deposit for the same account, network, coin and product is a new address
+    fresh = create(client, secret).json()
+    assert fresh["id"] != d["id"] and fresh["address"] != d["address"] and fresh["internal_status"] == "pending"
+
+
+@pytest.mark.parametrize("status, received", [
+    ("detected", "5000000"), ("partial", "5000000"), ("confirmed", "25000000"), ("expired", "0"), ("review", "1"),
+    ("swept", "25000000"),
+])
+def test_only_a_pending_deposit_can_be_cancelled(client, mongo, secret, status, received):
+    d = create(client, secret).json()
+    mongo.deposits.update_one({"_id": d["id"]}, {"$set": {"status": status, "received_amount": received}})
+    reply = cancel(client, secret, d["id"])
+    assert reply.status_code == 409 and "only a pending deposit can be cancelled" in reply.text
+    assert mongo.deposits.find_one({"_id": d["id"]})["status"] == status   # unchanged
+
+
+def test_a_pending_deposit_that_received_something_is_not_cancelled(client, mongo, secret):
+    d = create(client, secret).json()
+    mongo.deposits.update_one({"_id": d["id"]}, {"$set": {"received_amount": "1"}})   # counted, status not saved yet
+    assert cancel(client, secret, d["id"]).status_code == 409
+
+
+def test_cancelling_needs_the_secret_key_of_the_deposits_project(client, mongo, project, secret):
+    d = create(client, secret).json()
+    publishable = cancel(client, key_headers(mongo, project, kind="publishable"), d["id"])
+    assert publishable.status_code == 403 and "secret key" in publishable.text
+    other = make_project(mongo, number=NUMBER + 1, products=PRODUCTS)
+    assert cancel(client, key_headers(mongo, other), d["id"]).status_code == 404
+    assert mongo.deposits.find_one({"_id": d["id"]})["status"] == "pending"

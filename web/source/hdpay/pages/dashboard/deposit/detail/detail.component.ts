@@ -188,7 +188,7 @@ export class DetailComponent implements OnInit {
   }
 
   protected checkable(d: DepositInterface): boolean {
-    return ['pending', 'expired', 'detected', 'partial', 'review'].includes(d.internal_status);
+    return ['pending', 'expired', 'cancelled', 'detected', 'partial', 'review'].includes(d.internal_status);
   }
 
   /** `a` is a later moment than `b` (both ISO times; either missing is not later). */

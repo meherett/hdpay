@@ -324,3 +324,55 @@ def test_by_default_an_expired_deposit_is_kept_for_15_days(chain, monkeypatch):
     get_db().deposits.update_one({"_id": kept}, {"$set": {"expires_at": utcnow() - timedelta(days=15, minutes=1)}})
     catch_up(chain, loops=2)
     assert get(kept) is None                          # 15 days: deleted
+
+
+# ---- a deposit the project cancelled is still watched
+
+def cancelled_at_block(s, opened_block, cancelled_block):
+    """A deposit opened at `opened_block` and cancelled by its project at `cancelled_block`."""
+    deposit_id = make_deposit(s, opened_block)
+    at_cancel = at(s, cancelled_block)
+    get_db().deposits.update_one({"_id": deposit_id}, {"$set": {
+        "status": Status.CANCELLED.value, "expires_at": at_cancel, "cancelled_at": at_cancel}})
+    return deposit_id
+
+
+def test_a_payment_after_the_cancel_is_counted_late(chain):
+    d = cancelled_at_block(chain, chain.head - 100, chain.head - 80)
+    stopped_at(chain, chain.head - 70)
+    chain.pay("TDeposit0", "USDT", 10_000_000, "after", block=chain.head - 50)
+    catch_up(chain)
+    got = get(d)
+    assert (got.status, got.late, got.received_amount) == (Status.CONFIRMED, True, "10000000")   # late, still credited
+    assert "deposit.confirmed" in event_types()
+
+
+def test_a_payment_sent_before_the_cancel_is_on_time(chain):
+    d = cancelled_at_block(chain, chain.head - 100, chain.head - 80)
+    stopped_at(chain, chain.head - 95)
+    chain.pay("TDeposit0", "USDT", 10_000_000, "before", block=chain.head - 90)   # on its way when cancelled
+    catch_up(chain)
+    got = get(d)
+    assert (got.status, got.late) == (Status.CONFIRMED, False)
+
+
+def test_a_failed_payment_returns_it_to_cancelled(chain):
+    d = cancelled_at_block(chain, chain.head - 100, chain.head - 80)
+    stopped_at(chain, chain.head - 70)
+    chain.pay("TDeposit0", "USDT", 10_000_000, "reorged", block=chain.head)   # not confirmed yet
+    catch_up(chain)
+    assert get(d).status == Status.DETECTED
+    chain.statuses["reorged"] = __import__("api.chains", fromlist=["TxStatus"]).TxStatus.FAILED
+    chain.head += CONFIRMATIONS
+    timed(chain)
+    catch_up(chain)
+    assert get(d).status == Status.CANCELLED and get(d).received_amount == "0"
+
+
+def test_a_cancelled_unpaid_deposit_is_deleted_like_an_expired_one(chain, monkeypatch):
+    monkeypatch.setattr(core.settings, "expired_delete_after_hours", 360)
+    chain.balances[("TDeposit0", "USDT")] = 0
+    d = cancelled_at_block(chain, chain.head - 100, chain.head - 80)
+    get_db().deposits.update_one({"_id": d}, {"$set": {"expires_at": utcnow() - timedelta(days=15, minutes=1)}})
+    catch_up(chain)
+    assert get(d) is None and "deposit.deleted" in event_types()
