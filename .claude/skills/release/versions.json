@@ -1,7 +1,7 @@
 {
-  "hdpay-api": "0.7.0",
-  "hdpay-watcher": "0.7.0",
-  "hdpay-sweeper": "0.7.0",
+  "hdpay-api": "0.7.1",
+  "hdpay-watcher": "0.7.1",
+  "hdpay-sweeper": "0.7.1",
   "hdpay-web": "0.4.0",
   "hdpay-example-api": "0.1.0",
   "hdpay-example-web": "0.3.0"

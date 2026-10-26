@@ -145,7 +145,7 @@ pending -> expired -> detected -> confirmed -> swept
 | `review` | The rest never came — **not watched**; support decides     | `contact_support`   | `deposit.review`   |
 
 - A late payment of the right amount to an expired address is credited automatically (`late = true`).
-- An expired deposit that never received anything is **deleted** `HDPAY_EXPIRED_DELETE_AFTER_HOURS` after
+- An expired or cancelled deposit that never received anything is **deleted** `HDPAY_DELETE_UNPAID_AFTER_HOURS` after
   it expired (360, 15 days, by default; `0` keeps them all). Its chain's watcher reads the address's balance one last
   time first: if anything arrived after all, it is counted and the deposit kept. After that a payment to
   the address is no longer watched, and the project gets `deposit.deleted`.
@@ -280,7 +280,7 @@ holds the master key. A variable set in the environment wins over the files.
 | `HDPAY_REMAINDER_WINDOW_MINUTES` | `1440`                      | Default time to send the rest of an underpayment |
 | `HDPAY_AMOUNT_TOLERANCE_BPS`     | `50`                        | Default accepted underpayment, in basis points |
 | `HDPAY_EVENT_RETENTION_DAYS`     | `30`                        | How long projects can catch up on missed events |
-| `HDPAY_EXPIRED_DELETE_AFTER_HOURS` | `360` (15 days)           | Hours after an expired, never-paid deposit is deleted; `0` keeps them |
+| `HDPAY_DELETE_UNPAID_AFTER_HOURS` | `360` (15 days)            | Hours after an expired or cancelled, never-paid deposit is deleted; `0` keeps them (formerly `HDPAY_EXPIRED_DELETE_AFTER_HOURS`, still read) |
 | `HDPAY_POLL_INTERVAL_SECONDS`    | `5`                         | Watcher loop interval                      |
 | `HDPAY_PORT`                     | `8090`                      | API port                                   |
 | `HDPAY_RELOAD`                   | `false`                     | Development: restart the API when `api/` code changes |

@@ -15,7 +15,7 @@ Delivery is at least once: a project ignores an event id it has already handled.
     deposit.expired     the payment window ended with nothing received (a late payment is still counted)
     deposit.swept       the funds reached the project's treasury
     deposit.discount_expired  a product discount ended before the deposit was paid: the full price is due
-    deposit.deleted     expired with nothing received, and deleted after HDPAY_EXPIRED_DELETE_AFTER_HOURS
+    deposit.deleted     expired or cancelled with nothing received, deleted after HDPAY_DELETE_UNPAID_AFTER_HOURS
     deposit.cancelled   the project cancelled it while pending; its address is still watched
 
 Events are kept for HDPAY_EVENT_RETENTION_DAYS.

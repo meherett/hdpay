@@ -40,10 +40,15 @@ class Settings(BaseSettings):
 
     # Project events kept for a project to catch up on after a disconnect
     event_retention_days: int = 30
-    # An expired deposit that never received anything is deleted this many hours after it expired, once
-    # its chain's watcher has read its balance one last time (0 keeps them all). Anything sent to its
-    # address after that is no longer seen: with paths made from a moment, only a database backup finds it.
-    expired_delete_after_hours: int = 360   # 15 days
+    # An expired or cancelled deposit that never received anything is deleted this many hours after it
+    # closed, once its chain's watcher has read its balance one last time (0 keeps them all). Anything sent
+    # to its address after that is no longer seen: with paths made from a moment, only a database backup
+    # finds it. HDPAY_DELETE_UNPAID_AFTER_HOURS; HDPAY_EXPIRED_DELETE_AFTER_HOURS, its name before, is
+    # still read when it is not set.
+    delete_unpaid_after_hours: int = Field(
+        default=360,   # 15 days
+        validation_alias=AliasChoices("HDPAY_DELETE_UNPAID_AFTER_HOURS", "HDPAY_EXPIRED_DELETE_AFTER_HOURS"),
+    )
 
     # API server and the browser apps allowed to call it (hdpay web and admin)
     port: int = 8090

@@ -453,8 +453,8 @@ def run_once(db: Database, scanner: Scanner, loops: int) -> bool:
 
 
 def deletable(d: Deposit, now: datetime) -> bool:
-    """Expired or cancelled with nothing received, long enough ago (HDPAY_EXPIRED_DELETE_AFTER_HOURS; 0: never)."""
-    hours = settings.expired_delete_after_hours
+    """Expired or cancelled with nothing received, long enough ago (HDPAY_DELETE_UNPAID_AFTER_HOURS; 0: never)."""
+    hours = settings.delete_unpaid_after_hours
     return (
         hours > 0 and d.status in CLOSED and int(d.received_amount) == 0 and not d.payments
         and not (d.check and d.check.get("status") == "waiting")
