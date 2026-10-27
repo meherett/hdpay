@@ -14,6 +14,14 @@ export const STATUS: Record<InternalStatus, { color: string; label: string; hint
 
 export const STATUSES = Object.keys(STATUS) as InternalStatus[];
 
+/**
+ * How to show a status, also one this version of the admin does not know yet (a newer API can add
+ * one): its own name in a plain tag, so a page never breaks on it.
+ */
+export function statusOf(status: string): { color: string; label: string; hint: string } {
+  return STATUS[status as InternalStatus] ?? { color: 'default', label: status, hint: '' };
+}
+
 /** Tag colour and label for a project's status. */
 export const PROJECT_STATUS: Record<ProjectStatus, { color: string; label: string }> = {
   awaiting_keys: { color: 'gold', label: 'awaiting keys' },

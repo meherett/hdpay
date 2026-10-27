@@ -16,7 +16,7 @@ import { NzTagModule } from 'ng-zorro-antd/tag';
 import { formatUnits } from '../../../modules/amount';
 import { errorMessage } from '../../../modules/error';
 import { live } from '../../../modules/live';
-import { STATUS, STATUSES } from '../../../modules/status';
+import { STATUS, STATUSES, statusOf } from '../../../modules/status';
 import { ProjectInterface, StatsInterface } from '../../../services/api.interface';
 import { AdminService } from '../../../services/admin/admin.service';
 
@@ -48,6 +48,7 @@ export class OverviewComponent {
   protected readonly error = signal<string | null>(null);
   protected readonly statuses = STATUSES;
   protected readonly status = STATUS;
+  protected readonly statusOf = statusOf;
   protected readonly formatUnits = formatUnits;
   protected projectId: string | null = null;
 

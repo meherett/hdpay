@@ -13,7 +13,7 @@
         }
       </h1>
       <p>
-        <nz-tag [nzColor]="status[d.internal_status].color">{{ status[d.internal_status].label }}</nz-tag>
+        <nz-tag [nzColor]="statusOf(d.internal_status).color">{{ statusOf(d.internal_status).label }}</nz-tag>
         @if (d.late) {
           <nz-tag nzColor="gold">late</nz-tag>
         }

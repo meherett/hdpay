@@ -54,7 +54,7 @@
         <tr>
           <td>{{ row.chain_name }}</td>
           <td><strong>{{ row.asset }}</strong></td>
-          <td><nz-tag [nzColor]="status[row.status].color">{{ status[row.status].label }}</nz-tag></td>
+          <td><nz-tag [nzColor]="statusOf(row.status).color">{{ statusOf(row.status).label }}</nz-tag></td>
           <td nzAlign="right">{{ row.count }}</td>
           <td nzAlign="right">{{ formatUnits(row.amount, row.decimals) }}</td>
         </tr>

@@ -22,7 +22,7 @@ import { deleteWarning } from '../../../modules/deposit';
 import { DISCOUNT_STATUS, discountOver, discountState, due } from '../../../modules/discount';
 import { errorMessage } from '../../../modules/error';
 import { live } from '../../../modules/live';
-import { STATUS, STATUSES } from '../../../modules/status';
+import { STATUS, STATUSES, statusOf } from '../../../modules/status';
 import {
   ChainInterface,
   DepositFilterInterface,
@@ -77,6 +77,7 @@ export class DepositComponent {
   protected readonly projects = signal<ProjectInterface[]>([]);
   protected readonly statuses = STATUSES;
   protected readonly statusInfo = STATUS;
+  protected readonly statusOf = statusOf;
   protected readonly discountStatus = DISCOUNT_STATUS;
   protected readonly discountState = discountState;
 

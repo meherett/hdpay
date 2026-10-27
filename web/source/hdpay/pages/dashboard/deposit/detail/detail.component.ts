@@ -22,7 +22,7 @@ import { deleteWarning } from '../../../../modules/deposit';
 import { DISCOUNT_STATUS, discountOver, discountState, due, owed } from '../../../../modules/discount';
 import { errorMessage } from '../../../../modules/error';
 import { live } from '../../../../modules/live';
-import { STATUS } from '../../../../modules/status';
+import { STATUS, statusOf } from '../../../../modules/status';
 import { ChainViewInterface, DepositInterface } from '../../../../services/api.interface';
 import { AdminService } from '../../../../services/admin/admin.service';
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -81,6 +81,7 @@ export class DetailComponent implements OnInit {
   private readonly router = inject(Router);
   protected readonly error = signal<string | null>(null);
   protected readonly status = STATUS;
+  protected readonly statusOf = statusOf;
   protected readonly discountStatus = DISCOUNT_STATUS;
   protected readonly discountState = discountState;
   protected readonly discountOver = discountOver;

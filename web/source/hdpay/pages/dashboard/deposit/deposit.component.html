@@ -103,8 +103,8 @@
           </td>
           <td><strong>{{ deposit.asset }}</strong></td>
           <td>
-            <nz-tag [nzColor]="statusInfo[deposit.internal_status].color" nz-tooltip [nzTooltipTitle]="statusInfo[deposit.internal_status].hint">
-              {{ statusInfo[deposit.internal_status].label }}
+            <nz-tag [nzColor]="statusOf(deposit.internal_status).color" nz-tooltip [nzTooltipTitle]="statusOf(deposit.internal_status).hint">
+              {{ statusOf(deposit.internal_status).label }}
             </nz-tag>
             @if (deposit.late) {
               <nz-tag nzColor="gold">late</nz-tag>
