@@ -90,6 +90,45 @@
           }
 
           @case (1) {
+            @for (u of unfinished(); track u.id) {
+              <!-- a payment this buyer did not finish: finish it, change it, or ask for a refund -->
+              <nz-alert
+                class="block"
+                nzType="warning"
+                nzShowIcon
+                nzMessage="You have an unfinished payment"
+                [nzDescription]="unfinishedNote" />
+              <ng-template #unfinishedNote>
+                <p>
+                  You sent <strong>{{ formatUnits(u.received_amount, u.decimals) }} {{ u.asset }}</strong>
+                  on {{ u.chain_name }}{{ u.product_name ? ' for ' + u.product_name : '' }}
+                  (of {{ formatUnits(u.expected_amount, u.decimals) }} {{ u.asset }}), and the time to send the rest
+                  ran out. Your funds are safe. Finish it on the same address:
+                </p>
+                <div class="unfinished-actions">
+                  <button nz-button nzType="primary" type="button" [nzLoading]="reopening() === u.id" (click)="finish(u)">
+                    Pay the rest: {{ rest(u) }} {{ u.asset }}
+                  </button>
+                  @if (product(); as chosen) {
+                    @if (chosen.value !== u.product) {
+                      <button nz-button type="button" [nzLoading]="reopening() === u.id + chosen.value" (click)="finish(u, chosen.value)">
+                        @if (covers(u, chosen)) {
+                          Use it for {{ chosen.name }}: already paid
+                        } @else {
+                          Use it for {{ chosen.name }}: send {{ restFor(u, chosen) }} {{ u.asset }} more
+                        }
+                      </button>
+                    }
+                  } @else {
+                    <span class="muted">Or choose another product below: what you sent counts toward it.</span>
+                  }
+                </div>
+                <p class="muted refund">
+                  Want your money back instead? Contact our support and quote <code>{{ u.id }}</code>.
+                </p>
+              </ng-template>
+            }
+
             <nz-form-item>
               <nz-form-label>What to buy</nz-form-label>
               <div class="choices" role="radiogroup" aria-label="Product">

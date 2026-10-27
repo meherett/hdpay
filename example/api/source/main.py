@@ -10,6 +10,8 @@ The example shop's API, for its web page. It holds the HDPay secret key; the pag
     GET  /orders/{id}            the order's payment, for the payment page
     POST /orders/{id}/renew      a fresh address after the old one expired
     POST /orders/{id}/cancel     the customer gives up on a pending address, to pay another way
+    GET  /orders/unfinished?account_id=…  the account's short payments whose time for the rest ran out
+    POST /orders/{id}/reopen     {product?}: more time for the rest of one of them, or for another product
     POST /auth/login             {email, password}: a session token and the user
     GET  /auth/me                the signed-in user (Authorization: Bearer <token>)
     POST /auth/logout            ends the session
@@ -61,6 +63,11 @@ def _bearer(authorization: str | None) -> str:
     if scheme.lower() != "bearer" or not token:
         raise HTTPException(401, "Sign in first")
     return token
+
+
+class Reopen(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    product: str | None = Field(default=None, max_length=120)   # another product; left out, the same one
 
 
 class Order(BaseModel):
@@ -185,6 +192,11 @@ def create_app(settings: Settings | None = None, hdpay: HDPay | None = None, fol
             background.add_task(shop.send_address, user["email"], deposit)
         return public(deposit)
 
+    # before /orders/{deposit_id}, which would take "unfinished" for an order id
+    @app.get("/orders/unfinished")
+    def unfinished(account_id: str) -> list[dict[str, Any]]:
+        return [public(d) for d in shop.unfinished(account_id)]
+
     @app.get("/orders/{deposit_id}")
     def find(deposit_id: str) -> dict[str, Any]:
         return public(shop.find(deposit_id))
@@ -196,6 +208,10 @@ def create_app(settings: Settings | None = None, hdpay: HDPay | None = None, fol
             email = shop.store.order(deposit["id"])["email"]
             background.add_task(shop.send_address, email, deposit)
         return public(deposit)
+
+    @app.post("/orders/{deposit_id}/reopen")
+    def reopen(deposit_id: str, body: Reopen | None = None) -> dict[str, Any]:
+        return public(shop.reopen(deposit_id, body.product if body else None))
 
     @app.post("/orders/{deposit_id}/cancel")
     def cancel(deposit_id: str) -> dict[str, Any]:

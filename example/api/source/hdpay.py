@@ -47,6 +47,17 @@ class HDPay:
     def deposit(self, deposit_id: str) -> dict[str, Any]:
         return self._call("GET", f"/deposits/{deposit_id}")
 
+    def reopen(self, deposit_id: str, seconds: int | None = None, product: str | None = None) -> dict[str, Any]:
+        """More time for the rest of a short payment in review: back to partial, same address. `seconds`
+        from now (HDPay uses the project's remainder window when it is None); `product`, another product
+        instead, what was sent counting toward its price."""
+        body = {k: v for k, v in {"expires_in_seconds": seconds, "product": product}.items() if v is not None}
+        return self._call("POST", f"/deposits/{deposit_id}/reopen", json=body or None)
+
+    def deposits(self, account_id: str, status: str) -> list[dict[str, Any]]:
+        """The account's deposits in one internal status, newest first."""
+        return self._call("GET", "/deposits", params={"account_id": account_id, "status": status, "limit": 20})
+
     def cancel(self, deposit_id: str) -> dict[str, Any]:
         """Cancel a pending deposit (409 once anything arrived); its address stays watched by HDPay."""
         return self._call("POST", f"/deposits/{deposit_id}/cancel")

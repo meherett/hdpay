@@ -206,3 +206,16 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* an unfinished payment: finish it, or use it for another product */
+.unfinished-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.refund {
+  margin: 8px 0 0;
+}

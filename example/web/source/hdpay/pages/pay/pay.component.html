@@ -195,8 +195,21 @@
       @case ('contact_support') {
         <nz-result
           nzIcon="clock-circle"
-          nzTitle="This address has expired"
-          [nzSubTitle]="'We received ' + received() + ' ' + d.asset + (expected() ? ' of ' + expected() + ' ' + d.asset : '') + ', and the rest did not arrive in time. Do not send anything more to this address. Your funds are safe: contact our support and quote the reference below to resolve it.'" />
+          nzTitle="The time to send the rest has run out"
+          [nzSubTitle]="'We received ' + received() + ' ' + d.asset + (expected() ? ' of ' + expected() + ' ' + d.asset : '') + ', and the rest did not arrive in time. Do not send anything more to this address yet. Your funds are safe.'">
+          <div nz-result-extra>
+            <!-- only once the server says so: the page shows this a moment before the watcher closes it -->
+            @if (d.status === 'contact_support' && missing()) {
+              <button nz-button nzType="primary" [nzLoading]="reopening()" (click)="reopen()">
+                <nz-icon nzType="reload" />
+                Get more time to send the rest
+              </button>
+              <p class="muted">The same address waits for the remaining {{ missing() }} {{ d.asset }} again, with a new deadline.</p>
+            } @else {
+              <p class="muted">This takes a moment to update. Or contact our support, quoting the reference below.</p>
+            }
+          </div>
+        </nz-result>
       }
     }
 

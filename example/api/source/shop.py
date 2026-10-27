@@ -98,6 +98,21 @@ class Shop:
             body |= {"discount_percent": discount["percent"], "discount_ends_at": discount["ends_at"]}
         return self.place(order["email"], body)
 
+    def reopen(self, deposit_id: str, product: str | None = None) -> dict[str, Any]:
+        """The customer underpaid and the time for the rest ran out: they ask for more time, and HDPay
+        reopens the same address for the rest (the project's remainder window), for the same product or,
+        with `product`, another one, what they sent counting toward its price. HDPay emails nothing: its
+        deposit.reopened event makes this shop email them how much is left, and by when."""
+        if self.store.order(deposit_id) is None:
+            raise HDPayError(404, "No such order")
+        return self.hdpay.reopen(deposit_id, product=product)
+
+    def unfinished(self, account_id: str) -> list[dict[str, Any]]:
+        """The account's orders that were underpaid and ran out of time for the rest (HDPay's review):
+        shown when they come back to the checkout, to pay the rest, choose another product, or ask
+        support for a refund."""
+        return [d for d in self.hdpay.deposits(account_id, "review") if self.store.order(d["id"]) is not None]
+
     def cancel(self, deposit_id: str) -> dict[str, Any]:
         """The customer gave up on this address, to pay another way: HDPay cancels it while it is pending."""
         if self.store.order(deposit_id) is None:

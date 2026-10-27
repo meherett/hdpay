@@ -22,6 +22,19 @@ export class DepositService extends APIService {
     return this.get<DepositInterface>(encodeURIComponent(id));
   }
 
+  /**
+   * More time for the rest of a short payment whose time ran out: back to partial, same address. With
+   * `product`, for that product instead, what was sent counting toward its price.
+   */
+  public reopen(id: string, product?: string): Observable<DepositInterface> {
+    return this.create<DepositInterface>(product ? { product } : {}, undefined, `/${encodeURIComponent(id)}/reopen`);
+  }
+
+  /** The account's short payments whose time for the rest ran out, to finish or change. */
+  public unfinished(accountId: string): Observable<DepositInterface[]> {
+    return this.collection<DepositInterface[]>(undefined, `/unfinished?account_id=${encodeURIComponent(accountId)}`);
+  }
+
   /** The customer gives up on a pending address, to pay another way; anything sent to it still counts. */
   public cancel(id: string): Observable<DepositInterface> {
     return this.create<DepositInterface>({}, undefined, `/${encodeURIComponent(id)}/cancel`);

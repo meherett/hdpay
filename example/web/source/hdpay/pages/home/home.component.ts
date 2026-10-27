@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
   AbstractControl,
   FormBuilder,
@@ -12,7 +12,7 @@ import {
 } from '@angular/forms';
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
-import { interval, map } from 'rxjs';
+import { catchError, distinctUntilChanged, interval, map, of, switchMap } from 'rxjs';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzCardModule } from 'ng-zorro-antd/card';
@@ -22,8 +22,9 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzStepsModule } from 'ng-zorro-antd/steps';
 
+import { formatUnits } from '../../modules/amount';
 import { errorMessage } from '../../modules/error';
-import { ChainInterface, ProductInterface, UserInterface } from '../../services/api.interface';
+import { ChainInterface, DepositInterface, ProductInterface, UserInterface } from '../../services/api.interface';
 import { ChainService } from '../../services/chain/chain.service';
 import { DepositService } from '../../services/deposit/deposit.service';
 import { ProductService } from '../../services/product/product.service';
@@ -83,6 +84,10 @@ export class HomeComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly year = new Date().getFullYear();
+  /** The buyer's short payments whose time for the rest ran out: finished or changed before a new one. */
+  protected readonly unfinished = signal<DepositInterface[]>([]);
+  protected readonly reopening = signal<string | null>(null);
+  protected readonly formatUnits = formatUnits;
   protected readonly users = signal<UserInterface[]>([]);
   /** Buyers from public/users.json: picked from the list, sent like a custom user. */
   protected readonly fileUsers = signal<UserInterface[]>([]);
@@ -236,8 +241,56 @@ export class HomeComponent {
     this.step.set(1);
   }
 
+  /** What is still to send on an unfinished payment, for its own product. */
+  protected rest(d: DepositInterface): string {
+    const rest = BigInt(d.expected_amount ?? '0') - BigInt(d.received_amount);
+    return formatUnits((rest > 0n ? rest : 0n).toString(), d.decimals);
+  }
+
+  /** What was sent already pays `product`: switching to it needs no more money (HDPay confirms it). */
+  protected covers(d: DepositInterface, product: ProductInterface): boolean {
+    return !!product.price && Number(formatUnits(d.received_amount, d.decimals)) >= Number(product.price);
+  }
+
+  /** What is left to send if the unfinished payment is used for `product`. */
+  protected restFor(d: DepositInterface, product: ProductInterface): string {
+    const rest = Number(product.price) - Number(formatUnits(d.received_amount, d.decimals));
+    return rest > 0 ? rest.toFixed(2) : '0';
+  }
+
+  /**
+   * Finish an unfinished payment: the rest for its own product, or, with `product`, another one, what
+   * was sent counting toward its price. The same address, on its payment page.
+   */
+  protected finish(d: DepositInterface, product?: string): void {
+    this.reopening.set(d.id + (product ?? ''));
+    this.error.set(null);
+    this.depositService.reopen(d.id, product).subscribe({
+      next: (deposit) => {
+        this.reopening.set(null);
+        void this.router.navigate(['/pay', deposit.id]);
+      },
+      error: (response: HttpErrorResponse) => {
+        this.reopening.set(null);
+        this.error.set(errorMessage(response));
+      }
+    });
+  }
+
   constructor() {
     this.title.setTitle('HDPay - Checkout');
+
+    // a buyer who comes back with an unfinished payment sees it on the payment step, before paying again
+    toObservable(this.user)
+      .pipe(
+        map((user) => user?.account_id ?? null),
+        distinctUntilChanged(),
+        switchMap((accountId) =>
+          accountId ? this.depositService.unfinished(accountId).pipe(catchError(() => of([]))) : of([])
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((deposits) => this.unfinished.set(deposits));
 
     this.userService
       .fromFile()

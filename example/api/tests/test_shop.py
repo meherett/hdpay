@@ -60,6 +60,22 @@ class FakeHDPay:
             self.next_id += 1
             self.deposits[d["id"]] = d
             return httpx.Response(200, json=d)
+        if path.startswith("/v1/deposits/") and path.endswith("/reopen") and request.method == "POST":
+            d = self.deposits.get(path.split("/")[3])
+            if d is None:
+                return httpx.Response(404, json={"detail": "deposit not found"})
+            if d["status"] != "contact_support":
+                return httpx.Response(409, json={"detail": "deposit is partial: only a deposit in review can be reopened"})
+            self.reopened = json.loads(request.content) if request.content else None
+            d["status"] = "partial"
+            if self.reopened and self.reopened.get("product"):
+                d["product"] = self.reopened["product"]
+            return httpx.Response(200, json=d)
+        if path == "/v1/deposits" and request.method == "GET":
+            q = request.url.params
+            found = [d for d in self.deposits.values()
+                     if d["account_id"] == q["account_id"] and d.get("internal_status", d["status"]) == q["status"]]
+            return httpx.Response(200, json=found)
         if path.startswith("/v1/deposits/") and path.endswith("/cancel") and request.method == "POST":
             d = self.deposits.get(path.split("/")[3])
             if d is None:
@@ -272,3 +288,29 @@ def test_only_a_pending_address_is_cancelled(client, fake):
 
 def test_an_unknown_order_is_not_cancelled(client):
     assert client.post("/orders/nope/cancel").status_code == 404
+
+
+def test_a_customer_in_review_gets_more_time_for_the_rest(client, fake):
+    placed = client.post("/orders", json=ORDER).json()
+    fake.deposits[placed["id"]] |= {"status": "contact_support", "received_amount": "50000000"}
+    reopened = client.post(f"/orders/{placed['id']}/reopen")
+    assert reopened.status_code == 200 and reopened.json()["status"] == "partial"
+    assert fake.reopened is None              # HDPay's remainder window: the project's
+
+
+def test_only_a_payment_in_review_gets_more_time(client, fake):
+    placed = client.post("/orders", json=ORDER).json()
+    reply = client.post(f"/orders/{placed['id']}/reopen")   # still pending
+    assert reply.status_code == 409 and "only a deposit in review" in reply.text
+    assert client.post("/orders/nope/reopen").status_code == 404
+
+
+def test_a_returning_customer_sees_an_unfinished_payment_and_pays_it_for_another_product(client, fake):
+    placed = client.post("/orders", json=ORDER).json()
+    fake.deposits[placed["id"]] |= {"status": "contact_support", "internal_status": "review", "received_amount": "500000"}
+    [shown] = client.get("/orders/unfinished", params={"account_id": ORDER["account_id"]}).json()
+    assert shown["id"] == placed["id"] and shown["received_amount"] == "500000"
+    assert client.get("/orders/unfinished", params={"account_id": "9999"}).json() == []
+    reopened = client.post(f"/orders/{placed['id']}/reopen", json={"product": "100k"}).json()
+    assert reopened["status"] == "partial" and reopened["product"] == "100k"
+    assert fake.reopened == {"product": "100k"}

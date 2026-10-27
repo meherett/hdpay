@@ -60,6 +60,7 @@ export class PayComponent {
   protected readonly error = signal<string | null>(null);
   protected readonly renewing = signal(false);
   protected readonly cancelling = signal(false);
+  protected readonly reopening = signal(false);
   private readonly now = signal(Date.now());
 
   protected readonly secondsLeft = computed(() => {
@@ -244,6 +245,29 @@ export class PayComponent {
       },
       error: (response: HttpErrorResponse) => {
         this.cancelling.set(false);
+        this.message.error(errorMessage(response));
+      }
+    });
+  }
+
+  /**
+   * The customer underpaid and the time for the rest ran out: ask the shop for more time. The same
+   * address waits for the rest again (partial), with a new deadline; the shop also emails it.
+   */
+  protected reopen(): void {
+    const d = this.deposit();
+    if (!d) {
+      return;
+    }
+    this.reopening.set(true);
+    this.depositService.reopen(d.id).subscribe({
+      next: (deposit) => {
+        this.reopening.set(false);
+        this.deposit.set(deposit);
+        this.message.success('You have more time: send the rest to the same address.');
+      },
+      error: (response: HttpErrorResponse) => {
+        this.reopening.set(false);
         this.message.error(errorMessage(response));
       }
     });
