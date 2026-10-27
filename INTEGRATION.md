@@ -12,6 +12,7 @@ paid. The funds are swept to your project's treasury automatically.
 - [Opening a payment](#opening-a-payment)
 - [Reading payments](#reading-payments)
 - [Cancelling a payment](#cancelling-a-payment)
+- [Reopening a payment in review](#reopening-a-payment-in-review)
 - [Events](#events)
 - [Payment flows](#payment-flows)
 - [Discounts](#discounts)
@@ -222,7 +223,8 @@ POST /v1/deposits/{id}/cancel          secret key only
 ```
 
 ```bash
-curl -X POST "https://api.hdpay.systems/v1/deposits/2f0c…/cancel"   -H "Authorization: Bearer hdp_sk_your_secret_key"
+curl -X POST "https://api.hdpay.systems/v1/deposits/2f0c…/cancel" \
+  -H "Authorization: Bearer hdp_sk_your_secret_key"
 ```
 
 It works **only on a `pending` payment that has received nothing**. The payment becomes `cancelled`
@@ -246,6 +248,51 @@ you get a `deposit.cancelled` event.
 - A cancelled payment that receives nothing is deleted after 15 days, like an expired one
   (`deposit.deleted`). HDPay support can also reopen it (back to `pending`) if your customer asks.
 - **Secret key only.** A publishable key, which is in browsers, gets `403`: cancel from your server.
+
+---
+
+## Reopening a payment in review
+
+A payment in `review` was underpaid, and the rest never came in time: its address is closed. When the
+customer asks for more time, you can reopen it yourself:
+
+```
+POST /v1/deposits/{id}/reopen          secret key only
+```
+
+```bash
+curl -X POST "https://api.hdpay.systems/v1/deposits/2f0c…/reopen" \
+  -H "Authorization: Bearer hdp_sk_your_secret_key" \
+  -H "Content-Type: application/json" \
+  -d '{"expires_in_seconds": 3600}'
+```
+
+The payment goes back to **`partial`** on the **same address**, waiting for the rest until the new
+`expires_at`, and you get a `deposit.reopened` event. What already arrived stays counted.
+
+| Field | |
+|---|---|
+| `expires_in_seconds` | How long the customer has to send the rest, from now: 60 (a minute) to 604800 (a week). Optional: your project's remainder window when left out. |
+| `product` | Optional. Another of your priced products, for a customer who changed their mind: the payment is for that product now, at its price, and what they sent counts toward it. If what they sent already pays it, the payment is confirmed at once. Left out, it keeps its product. |
+
+| The payment is… | Reply |
+|---|---|
+| `review` | `200`: now `partial`, with the new `expires_at` (and the new `product` and `expected_amount`, if you gave one) |
+| `review`, with a `product` that what was sent already pays | `200`: **paid**: `confirmed` at once, for that product, and you get `deposit.confirmed` (not `deposit.reopened`). Deliver the order |
+| `cancelled` | `409`: deposit is cancelled: open a new deposit instead (POST /v1/deposits) |
+| anything else | `409`: deposit is …: only a deposit in review can be reopened |
+
+**Good to know**
+
+- **Still to send** is `expected_amount − received_amount`. If a discount ended before the payment was
+  complete, the full price is due: the reply's `expected_amount` already says so.
+- **A returning customer:** before opening a new payment for someone, look for their unfinished ones with
+  `GET /v1/deposits?account_id=…&status=review`, and offer to finish them (pay the rest, or use what they sent
+  for another product). For a refund, send them to HDPay support.
+- **You can't reopen a payment you cancelled.** Open a new payment instead (`POST /v1/deposits`): it gets a
+  new address.
+- To accept a short payment as it is, without waiting for the rest, ask HDPay support to **credit** it.
+- **Secret key only.** A publishable key, which is in browsers, gets `403`: reopen from your server.
 
 ---
 
@@ -300,7 +347,7 @@ curl -X POST https://api.hdpay.systems/v1/events/ack \
 | `deposit.cancelled` | You cancelled it while it was pending (`POST /v1/deposits/{id}/cancel`). It is `cancelled` now, with `cancelled_at`. | Nothing: you asked for it. If `deposit.detected` follows, the customer had already paid. |
 | `deposit.deleted` | It expired with nothing received and was deleted (by default 15 days after it expired). The address is no longer watched, and `GET /v1/deposits/{id}` returns 404. | Drop the order, or let the customer start again. |
 | `deposit.review` | The rest of a short payment never came. | Ask the customer to contact support. |
-| `deposit.reopened` | Support gave the customer more time: for the rest of a short payment (`partial`), or for the whole payment after it expired (`pending` again, same address). | Ask for the payment, or the rest, by the new `expires_at`. |
+| `deposit.reopened` | You (`POST /v1/deposits/{id}/reopen`) or HDPay support gave the customer more time: for the rest of a short payment (`partial`), or, by support only, for the whole payment after it expired (`pending` again, same address). | Ask for the payment, or the rest, by the new `expires_at`. |
 | `deposit.discount_expired` | A discount ended before the payment was complete. | Ask for the full price less what came. |
 | `deposit.swept` | The funds reached your treasury. | Bookkeeping only. |
 
@@ -315,7 +362,7 @@ curl -X POST https://api.hdpay.systems/v1/events/ack \
 3. 20 confirmations later → `deposit.confirmed` with `status: "paid"`. Credit the order.
 4. The funds are swept to your treasury → `deposit.swept`.
 
-### Underpaid, then reopened by support
+### Underpaid, then reopened
 
 The customer owes 100 USDT and sends 60.
 
@@ -323,8 +370,9 @@ The customer owes 100 USDT and sends 60.
    remaining 40 to the same address.
 2. If the rest never comes → `deposit.review` (`status: "contact_support"`). The address is closed. Ask the
    customer to contact you.
-3. The customer writes in. HDPay support either **credits** it (→ `deposit.confirmed`) or **reopens** it with
-   a new amount and deadline (→ `deposit.reopened`).
+3. The customer writes in. **You reopen it** (`POST /v1/deposits/{id}/reopen`, see
+   [Reopening a payment in review](#reopening-a-payment-in-review)) → `deposit.reopened`; or HDPay support
+   **credits** it as it is (→ `deposit.confirmed`), or reopens it with a new amount and deadline.
 
 On `deposit.reopened`, build the customer's message from three fields:
 
@@ -387,6 +435,9 @@ Errors are JSON: `{"detail": "…"}`. Show your own message to customers; log HD
 | 403 | Your IP is not allowed | Requests from 203.0.113.9 are not allowed for this project |
 | 404 | Unknown payment, or another project's | deposit not found |
 | 409 | Cancelling a payment that is not `pending`, or received something | deposit is detected: only a pending deposit can be cancelled |
+| 409 | Reopening a payment that is not in `review` | deposit is partial: only a deposit in review can be reopened |
+| 409 | Reopening a payment you cancelled | deposit is cancelled: open a new deposit instead (POST /v1/deposits) |
+| 422 | `expires_in_seconds` under 60 or over a week | Input should be greater than or equal to 60 |
 | 422 | Network not accepted | this project does not accept 'solana'; it accepts … |
 | 422 | Coin not accepted there | this project accepts TRX, USDT on Tron Nile Testnet, not 'USDC' |
 | 422 | Unknown product | product must be one of 10k, 100k |

@@ -13,7 +13,7 @@ from .chains import CHAINS
 from .db import Deposit, Status, find_deposit, utcnow
 from .keys import address_at, full_path
 from .projects import USD_STABLECOINS, accepted, get_project, price_amount, setting
-from .schemas import CreateDeposit, ProjectDepositOut
+from .schemas import CreateDeposit, ProjectDepositOut, deposit_decimals
 
 
 def get_deposit_or_404(db: Database, deposit_id: str, project_id: str | None = None) -> Deposit:
@@ -48,6 +48,126 @@ def cancel_deposit(db: Database, project: dict[str, Any], deposit_id: str) -> De
     cancelled = Deposit(done)
     notify(db, cancelled, "deposit.cancelled", project)
     return cancelled
+
+
+def reopen_for_project(
+    db: Database, project: dict[str, Any], deposit_id: str, window: timedelta | None, product: str | None = None
+) -> Deposit:
+    """The project gives its customer more time for the rest of a short payment: only a deposit in
+    review. One the project cancelled is not reopened: the project opens a new deposit, a new address.
+    With `product`, the customer changed their mind: the deposit is for that product, at its price,
+    what was sent counting toward it. When what was sent already pays that product (within the
+    project's amount tolerance), it is paid: confirmed at once, and the project gets deposit.confirmed
+    instead of deposit.reopened."""
+    deposit = get_deposit_or_404(db, deposit_id, project["_id"])
+    if deposit.status == Status.CANCELLED:
+        raise HTTPException(409, "deposit is cancelled: open a new deposit instead (POST /v1/deposits)")
+    if deposit.status != Status.REVIEW:
+        raise HTTPException(409, f"deposit is {deposit.status.value}: only a deposit in review can be reopened")
+    if not deposit.expected_amount:
+        raise HTTPException(409, "deposit accepts any amount, so there is no rest to wait for")
+    if product is not None:
+        listed = {p["value"]: p for p in project.get("products") or []}
+        if product not in listed or not listed[product].get("price"):
+            priced = [v for v, p in listed.items() if p.get("price")]
+            raise HTTPException(422, f"product must be one of {', '.join(priced)}" if priced else "there are no priced products")
+    apply_reopen(deposit, project, window, product=product)
+    if product is not None and paid_in_full(deposit, project):
+        # what came pays the product the customer chose: nothing more to send
+        deposit.status = Status.CONFIRMED
+        deposit.confirmed_at = utcnow()
+        deposit.save(db)
+        notify_status(db, deposit, project)
+        return deposit
+    deposit.save(db)
+    notify(db, deposit, "deposit.reopened", project)
+    return deposit
+
+
+def paid_in_full(deposit: Deposit, project: dict[str, Any]) -> bool:
+    """What the deposit received pays what it expects, within the project's amount tolerance (as the
+    watcher judges a payment)."""
+    if not deposit.expected_amount:
+        return int(deposit.received_amount) > 0
+    expected = int(deposit.expected_amount)
+    return int(deposit.received_amount) >= expected - expected * setting(project, "amount_tolerance_bps") // 10_000
+
+
+def reopen(
+    db: Database,
+    deposit: Deposit,
+    project: dict[str, Any] | None,
+    window: timedelta | None = None,
+    remaining_amount: str | None = None,
+    product: str | None = None,
+    keep_discount: bool = False,
+) -> Deposit:
+    """Give a deposit in review, expired or cancelled a fresh window, and tell the project
+    (deposit.reopened). The caller checks the status is one it may reopen. See apply_reopen."""
+    apply_reopen(deposit, project, window, remaining_amount, product, keep_discount)
+    deposit.save(db)
+    notify(db, deposit, "deposit.reopened", project)
+    return deposit
+
+
+def apply_reopen(
+    deposit: Deposit,
+    project: dict[str, Any] | None,
+    window: timedelta | None = None,
+    remaining_amount: str | None = None,
+    product: str | None = None,
+    keep_discount: bool = False,
+) -> None:
+    """The changes of a reopen, not saved yet.
+
+    In review (underpaid, the rest never came): back to partial, waiting for the rest for `window`
+    (the project's remainder window by default). Expired or cancelled (nothing came): back to pending,
+    a payment in the new `window` (the project's payment window by default) on time, as for a new address.
+
+    `remaining_amount`: the expected amount becomes received + this. `product`: another of the project's
+    products; a priced one brings its price, less the deposit's discount while that counts. A discount
+    that ended before the deposit was paid is due in full, unless `keep_discount` honors it.
+    """
+    expired = deposit.status in (Status.EXPIRED, Status.CANCELLED)
+    if product is not None:
+        listed = {p["value"]: p for p in (project or {}).get("products") or []}
+        if product not in listed:
+            raise HTTPException(422, f"product must be one of {', '.join(listed)}" if listed else "there are no products")
+        price = listed[product].get("price")
+        if product != deposit.product and price and deposit.asset in USD_STABLECOINS:
+            decimals = deposit_decimals(deposit)
+            full = price_amount(price, decimals)
+            deposit.expected_amount = str(full)
+            if deposit.discount:
+                amount = price_amount(discounts.discounted_price(price, deposit.discount["percent"]), decimals)
+                deposit.discount = deposit.discount | {"full_amount": str(full), "amount": str(amount)}
+                if deposit.discount["status"] != discounts.LAPSED:
+                    deposit.expected_amount = str(amount)
+        deposit.product = product
+    discount = deposit.discount
+    if discount and discount["status"] in (discounts.ACTIVE, discounts.LAPSED) and utcnow() >= discount["ends_at"]:
+        if keep_discount:
+            deposit.discount = discount | {"status": discounts.HONORED}
+            deposit.expected_amount = discount["amount"]
+        else:
+            deposit.discount = discount | {"status": discounts.LAPSED}
+            deposit.expected_amount = discount["full_amount"]
+    if remaining_amount:
+        deposit.expected_amount = str(int(deposit.received_amount) + int(remaining_amount))
+    # what it holds already passed its confirmations; a reorg of the rest rolls back to it
+    deposit.confirmed_amount = deposit.received_amount
+    if expired:
+        # a new payment window: a payment in it is on time, as for a new address
+        window = window or timedelta(minutes=setting(project or {}, "deposit_ttl_minutes"))
+        deposit.expires_at = deposit.window_ends_at = utcnow() + window
+        deposit.late = False
+        if deposit.status == Status.CANCELLED:
+            deposit.cancelled_at = None   # support took it back: it is no longer cancelled
+        deposit.status = Status.PENDING
+    else:
+        window = window or timedelta(minutes=setting(project or {}, "remainder_window_minutes"))
+        deposit.expires_at = utcnow() + window
+        deposit.status = Status.PARTIAL
 
 
 def notify(db: Database, deposit: Deposit, event_type: str, project: dict[str, Any] | None = None) -> None:

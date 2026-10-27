@@ -18,7 +18,7 @@ from .chain_sync import chain_for, load_removed, same_contract
 from .chains import CHAINS, Family
 from .config import settings
 from .db import Deposit, Status, get_counter, get_db, utcnow
-from .deposits import get_deposit_or_404, notify, notify_status
+from .deposits import get_deposit_or_404, notify, notify_status, reopen
 from .keys import check_project_xpub, coin_path, funder_address, funder_path
 from .projects import (
     USD_STABLECOINS,
@@ -743,47 +743,8 @@ def reopen_reviewed_deposit(deposit_id: str, admin: AdminUser, db: DB, body: Reo
     expired = deposit.status in (Status.EXPIRED, Status.CANCELLED)
     if not deposit.expected_amount and not expired:
         raise HTTPException(409, "deposit accepts any amount, so there is no rest to wait for")
-    if body.product is not None:
-        listed = {p["value"]: p for p in (project or {}).get("products") or []}
-        if body.product not in listed:
-            raise HTTPException(422, f"product must be one of {', '.join(listed)}" if listed else "there are no products")
-        price = listed[body.product].get("price")
-        if body.product != deposit.product and price and deposit.asset in USD_STABLECOINS:
-            decimals = deposit_decimals(deposit)
-            full = price_amount(price, decimals)
-            deposit.expected_amount = str(full)
-            if deposit.discount:
-                amount = price_amount(discounts.discounted_price(price, deposit.discount["percent"]), decimals)
-                deposit.discount = deposit.discount | {"full_amount": str(full), "amount": str(amount)}
-                if deposit.discount["status"] != discounts.LAPSED:
-                    deposit.expected_amount = str(amount)
-        deposit.product = body.product
-    discount = deposit.discount
-    if discount and discount["status"] in (discounts.ACTIVE, discounts.LAPSED) and utcnow() >= discount["ends_at"]:
-        if body.keep_discount:
-            deposit.discount = discount | {"status": discounts.HONORED}
-            deposit.expected_amount = discount["amount"]
-        else:
-            deposit.discount = discount | {"status": discounts.LAPSED}
-            deposit.expected_amount = discount["full_amount"]
-    if body.remaining_amount:
-        deposit.expected_amount = str(int(deposit.received_amount) + int(body.remaining_amount))
-    # what it holds already passed its confirmations; a reorg of the rest rolls back to it
-    deposit.confirmed_amount = deposit.received_amount
-    if expired:
-        # a new payment window: a payment in it is on time, as for a new address
-        minutes = body.minutes or setting(project or {}, "deposit_ttl_minutes")
-        deposit.expires_at = deposit.window_ends_at = utcnow() + timedelta(minutes=minutes)
-        deposit.late = False
-        if deposit.status == Status.CANCELLED:
-            deposit.cancelled_at = None   # support took it back: it is no longer cancelled
-        deposit.status = Status.PENDING
-    else:
-        minutes = body.minutes or setting(project or {}, "remainder_window_minutes")
-        deposit.expires_at = utcnow() + timedelta(minutes=minutes)
-        deposit.status = Status.PARTIAL
-    deposit.save(db)
-    notify(db, deposit, "deposit.reopened", project)
+    window = timedelta(minutes=body.minutes) if body.minutes else None
+    reopen(db, deposit, project, window, body.remaining_amount, body.product, body.keep_discount)
     return AdminDepositOut.from_deposit(deposit, project)
 
 

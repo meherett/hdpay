@@ -7,6 +7,7 @@ Every route needs the project's API key: Authorization: Bearer hdp_sk_... (or hd
     GET  /v1/products               the project's products                            secret or publishable
     POST /v1/deposits               open a deposit (or get the account's open one)    secret or publishable
     POST /v1/deposits/{id}/cancel   cancel a pending deposit                          secret
+    POST /v1/deposits/{id}/reopen   more time for the rest of one in review           secret
     GET  /v1/deposits/{id}          one of the project's deposits                     secret or publishable
     GET  /v1/deposits               the project's deposits, newest first              secret
     GET  /v1/events?after=<seq>     events after a sequence (default: the last acked)  secret
@@ -20,6 +21,7 @@ happens. Send {"ack": seq} once an event is handled; a reconnect resumes after t
 
 import asyncio
 import json
+from datetime import timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -29,7 +31,7 @@ from pymongo.database import Database
 from . import events
 from .apikeys import SECRET, AnyKeyProject, SecretKeyProject, authenticate
 from .db import Deposit, Status, get_db
-from .deposits import cancel_deposit, get_deposit_or_404, open_deposit
+from .deposits import cancel_deposit, get_deposit_or_404, open_deposit, reopen_for_project
 from .projects import USD_STABLECOINS, accepted, get_project
 from .schemas import (
     Acknowledge,
@@ -40,6 +42,7 @@ from .schemas import (
     EventOut,
     ProductOut,
     ProjectDepositOut,
+    ProjectReopen,
 )
 
 router = APIRouter(prefix="/v1", tags=["gateway"])
@@ -92,6 +95,19 @@ def cancel(deposit_id: str, project: SecretKeyProject, db: DB):
     deposit.cancelled. 409 for any other status. The address stays watched: a payment already sent is
     still counted. Secret key only: a publishable key is in a browser."""
     return ProjectDepositOut.from_deposit(cancel_deposit(db, project, deposit_id), project)
+
+
+@router.post("/deposits/{deposit_id}/reopen", response_model=ProjectDepositOut)
+def reopen(deposit_id: str, project: SecretKeyProject, db: DB, body: ProjectReopen | None = None):
+    """Give the customer more time for the rest of a short payment: a deposit in review goes back to
+    partial, waiting for the rest for expires_in_seconds (the project's remainder window by default), and
+    the project gets deposit.reopened. With product, it is for that product instead, at its price, what
+    was sent counting toward it. 409 for any other status; a cancelled one is not reopened: open a new
+    deposit instead."""
+    seconds = body.expires_in_seconds if body else None
+    window = timedelta(seconds=seconds) if seconds else None
+    product = body.product if body else None
+    return ProjectDepositOut.from_deposit(reopen_for_project(db, project, deposit_id, window, product), project)
 
 
 @router.get("/deposits/{deposit_id}", response_model=ProjectDepositOut)

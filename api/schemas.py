@@ -646,6 +646,18 @@ class ReopenDeposit(BaseModel):
     keep_discount: bool = False
 
 
+class ProjectReopen(BaseModel):
+    """A project's terms for reopening a deposit in review."""
+
+    model_config = ConfigDict(extra="forbid")
+    # how long the address waits for the rest, from now: 1 minute to a week; the project's remainder
+    # window when left out
+    expires_in_seconds: int | None = Field(default=None, ge=60, le=7 * 24 * 3600)
+    # another of the project's products, for a customer who changes their mind: a priced one sets what is
+    # due, and what was sent counts toward it; left out, the deposit keeps its product
+    product: str | None = Field(default=None, max_length=120)
+
+
 class AdminDepositList(BaseModel):
     total: int
     skip: int

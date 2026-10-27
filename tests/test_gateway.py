@@ -1,10 +1,12 @@
+from datetime import timedelta
+
 import pytest
 from hdwallet.cryptocurrencies import Ethereum, Tron
 from starlette.websockets import WebSocketDisconnect
 
 from factories import NUMBER, key_headers, make_project, wallet_address
 from api.chains import Family
-from api.db import get_db
+from api.db import get_db, utcnow
 from api.keys import full_path, moment_of
 
 PRODUCTS = [{"value": "100k", "name": "$100,000", "subname": "(Most popular)"}, {"value": "10k", "name": "$10,000", "subname": None}]
@@ -265,3 +267,111 @@ def test_cancelling_needs_the_secret_key_of_the_deposits_project(client, mongo, 
     other = make_project(mongo, number=NUMBER + 1, products=PRODUCTS)
     assert cancel(client, key_headers(mongo, other), d["id"]).status_code == 404
     assert mongo.deposits.find_one({"_id": d["id"]})["status"] == "pending"
+
+
+# ---- a project reopens a deposit in review, for the rest of a short payment
+
+def reopen(client, headers, deposit_id, **body):
+    return client.post(f"/v1/deposits/{deposit_id}/reopen", headers=headers, json=body or None)
+
+
+def in_review(mongo, deposit_id, received="10000000"):
+    mongo.deposits.update_one({"_id": deposit_id}, {"$set": {
+        "status": "review", "received_amount": received, "confirmed_amount": received,
+        "expires_at": utcnow() - timedelta(hours=1)}})
+
+
+def test_a_deposit_in_review_is_reopened_for_the_rest(client, mongo, secret):
+    d = create(client, secret, expected_amount=25_000_000).json()
+    in_review(mongo, d["id"])
+    reply = reopen(client, secret, d["id"], expires_in_seconds=3600)
+    assert reply.status_code == 200, reply.text
+    got = reply.json()
+    assert (got["internal_status"], got["received_amount"], got["expected_amount"]) == ("partial", "10000000", "25000000")
+    assert 3590 <= got["expires_in_seconds"] <= 3600
+    [event] = [e for e in mongo.events.find() if e["type"] == "deposit.reopened"]
+    assert event["deposit"]["id"] == d["id"] and event["deposit"]["internal_status"] == "partial"
+
+
+def test_without_a_time_it_waits_the_projects_remainder_window(client, mongo, project, secret):
+    mongo.projects.update_one({"_id": project["_id"]}, {"$set": {"remainder_window_minutes": 90}})
+    d = create(client, secret, expected_amount=25_000_000).json()
+    in_review(mongo, d["id"])
+    got = reopen(client, secret, d["id"]).json()
+    assert 89 * 60 < got["expires_in_seconds"] <= 90 * 60
+
+
+@pytest.mark.parametrize("status", ["pending", "detected", "partial", "confirmed", "swept", "expired"])
+def test_only_a_deposit_in_review_is_reopened(client, mongo, secret, status):
+    d = create(client, secret, expected_amount=25_000_000).json()
+    mongo.deposits.update_one({"_id": d["id"]}, {"$set": {"status": status}})
+    reply = reopen(client, secret, d["id"])
+    assert reply.status_code == 409 and "only a deposit in review can be reopened" in reply.text
+
+
+def test_a_cancelled_deposit_is_not_reopened_a_new_one_is_opened(client, mongo, secret):
+    d = create(client, secret, expected_amount=25_000_000).json()
+    assert cancel(client, secret, d["id"]).status_code == 200
+    reply = reopen(client, secret, d["id"])
+    assert reply.status_code == 409 and "open a new deposit instead" in reply.text
+    fresh = create(client, secret, expected_amount=25_000_000).json()
+    assert fresh["address"] != d["address"] and fresh["internal_status"] == "pending"
+
+
+@pytest.mark.parametrize("seconds", [59, 7 * 24 * 3600 + 1])
+def test_the_new_window_is_a_minute_to_a_week(client, mongo, secret, seconds):
+    d = create(client, secret, expected_amount=25_000_000).json()
+    in_review(mongo, d["id"])
+    assert reopen(client, secret, d["id"], expires_in_seconds=seconds).status_code == 422
+
+
+def test_reopening_needs_the_secret_key_of_the_deposits_project(client, mongo, project, secret):
+    d = create(client, secret, expected_amount=25_000_000).json()
+    in_review(mongo, d["id"])
+    publishable = reopen(client, key_headers(mongo, project, kind="publishable"), d["id"])
+    assert publishable.status_code == 403
+    other = make_project(mongo, number=NUMBER + 1, products=PRODUCTS)
+    assert reopen(client, key_headers(mongo, other), d["id"]).status_code == 404
+    assert mongo.deposits.find_one({"_id": d["id"]})["status"] == "review"
+
+
+def priced_project(mongo):
+    priced = [{"value": "10k", "name": "$10,000", "subname": None, "price": "79"},
+              {"value": "25k", "name": "$25,000", "subname": None, "price": "249"},
+              {"value": "mini", "name": "Mini", "subname": None, "price": "0.40"},
+              {"value": "half", "name": "Half", "subname": None, "price": "0.50"}]
+    project = make_project(mongo, number=NUMBER + 7, products=priced)
+    return key_headers(mongo, project)
+
+
+def test_reopening_for_another_product_counts_what_was_sent(client, mongo):
+    headers = priced_project(mongo)
+    d = client.post("/v1/deposits", headers=headers, json={"account_id": "2009", "chain": "tron", "asset": "USDT", "product": "10k"}).json()
+    in_review(mongo, d["id"], received="500000")                              # 0.5 of 79 USDT
+    got = reopen(client, headers, d["id"], product="25k").json()
+    assert (got["internal_status"], got["product"], got["expected_amount"], got["received_amount"]) == ("partial", "25k", "249000000", "500000")
+    assert got["address"] == d["address"]                                      # the same address, the rest is 248.5
+
+
+@pytest.mark.parametrize("product, difference", [("half", "exact"), ("mini", "over")])
+def test_a_product_what_was_sent_already_pays_is_paid_at_once(client, mongo, product, difference):
+    headers = priced_project(mongo)
+    d = client.post("/v1/deposits", headers=headers, json={"account_id": "2009", "chain": "tron", "asset": "USDT", "product": "10k"}).json()
+    in_review(mongo, d["id"], received="500000")                              # 0.5 USDT sent
+    reply = reopen(client, headers, d["id"], product=product)
+    assert reply.status_code == 200, reply.text
+    got = reply.json()
+    assert (got["internal_status"], got["status"], got["product"], got["difference"]) == ("confirmed", "paid", product, difference)
+    assert got["confirmed_at"]
+    types = [e["type"] for e in mongo.events.find().sort("seq", 1)]
+    assert types[-1] == "deposit.confirmed" and "deposit.reopened" not in types
+    stored = mongo.deposits.find_one({"_id": d["id"]})
+    assert stored["confirmed_amount"] == "500000"                             # what the sweeper moves
+
+
+def test_an_unknown_product_is_refused(client, mongo):
+    headers = priced_project(mongo)
+    d = client.post("/v1/deposits", headers=headers, json={"account_id": "2009", "chain": "tron", "asset": "USDT", "product": "10k"}).json()
+    in_review(mongo, d["id"], received="500000")
+    assert reopen(client, headers, d["id"], product="nope").status_code == 422
+    assert mongo.deposits.find_one({"_id": d["id"]})["status"] == "review"
